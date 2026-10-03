@@ -4,7 +4,7 @@ import moment from 'moment'
 // eslint-disable-next-line
 Vue.filter('datetime', function(value: any) {
   if (value) {
-    return moment(String(value)).format('MM/DD/YYYY hh:mm')
+    return moment(String(value)).format('YYYY-MM-DD HH:mm')
   }
 })
 

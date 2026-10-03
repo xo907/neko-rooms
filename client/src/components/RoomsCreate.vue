@@ -9,6 +9,23 @@
         v-model="valid"
         lazy-validation
       >
+        <v-row>
+          <v-col cols="12" class="pb-0">
+            <v-text-field label="Title" v-model="meta.title" placeholder="Movie night, Lo-fi beats, ..." counter="80" maxlength="80" />
+          </v-col>
+          <v-col cols="12" class="py-0">
+            <v-textarea label="Description" v-model="meta.description" rows="1" auto-grow counter="500" maxlength="500" />
+          </v-col>
+          <v-col cols="12" sm="6" class="py-0">
+            <v-combobox label="Category" v-model="meta.category" :items="categories" clearable />
+          </v-col>
+          <v-col cols="12" sm="6" class="py-0">
+            <v-select label="Visibility" v-model="meta.visibility" :items="visibilityItems">
+              <template v-slot:item="{ item }"><v-icon small class="mr-2">{{ item.icon }}</v-icon>{{ item.text }}</template>
+              <template v-slot:selection="{ item }"><v-icon small class="mr-2">{{ item.icon }}</v-icon>{{ item.text }}</template>
+            </v-select>
+          </v-col>
+        </v-row>
         <v-row align="center">
           <v-col class="pb-0">
             <v-text-field
@@ -569,6 +586,27 @@ export default class RoomsCreate extends Vue {
 
   public valid = true
 
+  public meta = {
+    title: '',
+    description: '',
+    category: '' as string | null,
+    visibility: 'private',
+  }
+
+  get categories(): string[] {
+    return this.$store.state.app.branding.home.categories || []
+  }
+
+  get visibilityItems() {
+    const policy = this.$store.getters.policy
+    const isAdmin = this.$store.getters.isAdmin
+    return [
+      { text: 'Public, listed on the homepage', value: 'public', icon: 'mdi-earth', disabled: !isAdmin && !(policy && policy.users_can_make_public) },
+      { text: 'Friends only', value: 'friends', icon: 'mdi-account-multiple', disabled: !(policy && policy.friends_enabled) },
+      { text: 'Private, invite link only', value: 'private', icon: 'mdi-lock' },
+    ]
+  }
+
   public screen = true
   public extended = false
   public expert = false
@@ -782,6 +820,7 @@ export default class RoomsCreate extends Vue {
           path: this.browserPolicyConfig.path,
           content: this.browserPolicyContent
         } : undefined,
+        meta: { ...this.meta, category: this.meta.category || '' },
       })
       this.Clear()
       this.$emit('finished', true)
@@ -807,6 +846,7 @@ export default class RoomsCreate extends Vue {
 
   Clear() {
     this._form.resetValidation()
+    this.meta = { title: '', description: '', category: '', visibility: 'private' }
     this.data = {
       ...this.$store.state.defaultRoomSettings,
       // eslint-disable-next-line

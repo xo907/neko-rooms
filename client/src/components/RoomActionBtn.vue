@@ -107,6 +107,7 @@ export default class RoomActionBtn extends Vue {
 
     try {
       await this.$store.dispatch(this.tmpl.dispatch, this.roomId)
+      this.$emit("done", this.action)
       this.$swal({
         title: this.tmpl.msg,
         icon: 'success',
