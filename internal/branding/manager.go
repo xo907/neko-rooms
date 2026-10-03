@@ -60,9 +60,30 @@ func (m *Manager) load() (Branding, error) {
 	// unmarshal on top of defaults so new fields get default values
 	b := Default()
 	err := m.store.GetSetting(settingsKey, &b)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) {
+		return b, nil
+	}
+	if err != nil {
 		return b, err
 	}
+
+	// branding saved before rooms could be branded properly had injection
+	// off by default, turn it on once when upgrading
+	var raw struct {
+		Rooms map[string]json.RawMessage `json:"rooms"`
+	}
+	if err := m.store.GetSetting(settingsKey, &raw); err == nil {
+		if _, ok := raw.Rooms["replace_logo"]; !ok {
+			b.Rooms.Inject = true
+			if b.Rooms.PageTitle == "" {
+				b.Rooms.PageTitle = Default().Rooms.PageTitle
+			}
+			if err := m.store.SetSetting(settingsKey, b); err != nil {
+				return b, err
+			}
+		}
+	}
+
 	return b, nil
 }
 

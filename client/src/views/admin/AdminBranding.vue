@@ -237,13 +237,15 @@
         <!-- rooms -->
         <v-tab-item>
           <v-card-text>
-            <v-alert type="warning" text dense>
-              Branding is injected into the neko page served by each room container. It works with rooms proxied through neko-rooms (the default), not with rooms routed by Traefik directly.
+            <v-alert type="info" text dense>
+              Applies to the neko player page of every room. Works with rooms proxied through neko-rooms (the default), not with rooms routed by Traefik directly. Reload an open room to see changes.
             </v-alert>
             <v-switch v-model="draft.rooms.inject" inset label="Brand the pages inside rooms" />
             <v-row :class="{ 'nr-disabled': !draft.rooms.inject }">
               <v-col cols="12" md="6">
-                <v-text-field v-model="draft.rooms.page_title" label="Room tab title (empty = neko default)" hint="Placeholders: {app_name}, {year}" persistent-hint outlined dense class="mb-4" />
+                <v-switch v-model="draft.rooms.replace_logo" inset dense label="Replace the n.eko logo and name with your logo and site name" hint="Uses the logo from Identity, or the favicon if there is no logo" persistent-hint class="mt-0 mb-4" />
+                <v-switch v-model="draft.rooms.site_colors" inset dense label="Use the site's dark palette inside rooms" hint="Backgrounds, side panel, join dialog, buttons, sliders" persistent-hint class="mb-6" />
+                <v-text-field v-model="draft.rooms.page_title" label="Room tab title (empty = neko default)" hint="Placeholders: {room}, {app_name}, {year}" persistent-hint outlined dense class="mb-4" />
                 <AssetField v-model="draft.rooms.favicon" asset="room-favicon" accept="image/*,.ico" label="Room favicon (empty = site favicon)" />
               </v-col>
               <v-col cols="12" md="6">

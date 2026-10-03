@@ -121,12 +121,14 @@ type Lobby struct {
 }
 
 type Rooms struct {
-	Inject     bool   `json:"inject"` // inject branding into neko room pages
-	PageTitle  string `json:"page_title"`
-	Favicon    string `json:"favicon"` // url or asset url, empty = global favicon
-	CustomCSS  string `json:"custom_css"`
-	CustomJS   string `json:"custom_js"`
-	CustomHead string `json:"custom_head"`
+	Inject      bool   `json:"inject"`       // inject branding into neko room pages
+	ReplaceLogo bool   `json:"replace_logo"` // swap the n.eko logo & name for the site's
+	SiteColors  bool   `json:"site_colors"`  // apply the site's dark palette to the neko client
+	PageTitle   string `json:"page_title"`   // {room}, {app_name}, {year} placeholders
+	Favicon     string `json:"favicon"`      // url or asset url, empty = global favicon
+	CustomCSS   string `json:"custom_css"`
+	CustomJS    string `json:"custom_js"`
+	CustomHead  string `json:"custom_head"`
 }
 
 type Branding struct {
@@ -285,7 +287,10 @@ func Default() Branding {
 		},
 
 		Rooms: Rooms{
-			Inject: false,
+			Inject:      true,
+			ReplaceLogo: true,
+			SiteColors:  true,
+			PageTitle:   "{room} · {app_name}",
 		},
 	}
 }
