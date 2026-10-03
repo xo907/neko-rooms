@@ -174,14 +174,14 @@ type Room struct {
 	CanManage bool `json:"can_manage"`
 	CanJoin   bool `json:"can_join"`
 
-	Running        bool     `json:"running"`
-	Ready          bool     `json:"ready"`
-	Paused         bool     `json:"paused"`
-	Viewers        int      `json:"viewers"`
-	Members        []string `json:"members"`
-	FriendsInside  []string `json:"friends_inside"`
-	MaxConnections uint16   `json:"max_connections"`
-	HasThumbnail   bool     `json:"has_thumbnail"`
+	Running        bool      `json:"running"`
+	Ready          bool      `json:"ready"`
+	Paused         bool      `json:"paused"`
+	Viewers        int       `json:"viewers"`
+	Members        []string  `json:"members"`
+	FriendsInside  []string  `json:"friends_inside"`
+	MaxConnections uint16    `json:"max_connections"`
+	HasThumbnail   bool      `json:"has_thumbnail"`
 	CreatedAt      time.Time `json:"created_at"`
 
 	InviteCode string `json:"invite_code,omitempty"` // only for managers

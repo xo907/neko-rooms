@@ -237,7 +237,10 @@ func (p *ProxyManagerCtx) newProxyHandler(prefix, host string) http.Handler {
 			r.Header.Del("Accept-Encoding")
 		}
 	}
-	handler.ModifyResponse = p.injectBranding
+	roomName := path.Base(prefix)
+	handler.ModifyResponse = func(res *http.Response) error {
+		return p.injectBranding(res, roomName)
+	}
 	return http.StripPrefix(prefix, handler)
 }
 

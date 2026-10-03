@@ -3,6 +3,8 @@ package branding
 import (
 	"strings"
 	"testing"
+
+	"github.com/m1k1o/neko-rooms/internal/store"
 )
 
 func TestDefaultIsValid(t *testing.T) {
@@ -48,5 +50,41 @@ func TestBootCSSUsesPalette(t *testing.T) {
 	css := bootCSS(b)
 	if !strings.Contains(css, b.Theme.Dark.Background) {
 		t.Fatalf("boot css missing background: %s", css)
+	}
+}
+
+func TestUpgradeEnablesRoomBranding(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	// branding saved by the previous version: rooms injection off, no replace_logo key
+	old := map[string]any{
+		"app_name": "xo",
+		"rooms":    map[string]any{"inject": false, "page_title": ""},
+	}
+	if err := s.SetSetting(settingsKey, old); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := New(s, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := m.Get()
+	if b.AppName != "xo" || !b.Rooms.Inject || !b.Rooms.ReplaceLogo || b.Rooms.PageTitle == "" {
+		t.Fatalf("upgrade did not enable room branding: %+v", b.Rooms)
+	}
+
+	// an explicit choice made after the upgrade is kept
+	b.Rooms.Inject = false
+	if err := m.Set(b); err != nil {
+		t.Fatal(err)
+	}
+	m2, _ := New(s, "")
+	if m2.Get().Rooms.Inject {
+		t.Fatal("explicit opt-out must be kept")
 	}
 }

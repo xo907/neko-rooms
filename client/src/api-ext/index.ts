@@ -268,6 +268,8 @@ export interface Branding {
   }
   rooms: {
     inject: boolean
+    replace_logo: boolean
+    site_colors: boolean
     page_title: string
     favicon: string
     custom_css: string
