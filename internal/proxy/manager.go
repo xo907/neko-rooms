@@ -13,6 +13,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/m1k1o/neko-rooms/internal/auth"
+	"github.com/m1k1o/neko-rooms/internal/branding"
 	"github.com/m1k1o/neko-rooms/internal/room"
 	"github.com/m1k1o/neko-rooms/internal/types"
 	"github.com/m1k1o/neko-rooms/pkg/prefix"
@@ -43,10 +45,18 @@ type ProxyManagerCtx struct {
 
 	rooms    *room.RoomManagerCtx
 	handlers prefix.Tree[*entry]
+
+	branding *branding.Manager
+	auth     *auth.Manager
+	loginURL string
 }
 
-func New(rooms *room.RoomManagerCtx, waitEnabled bool) *ProxyManagerCtx {
+func New(rooms *room.RoomManagerCtx, waitEnabled bool, brandingManager *branding.Manager, authManager *auth.Manager, loginURL string) *ProxyManagerCtx {
 	return &ProxyManagerCtx{
+		branding: brandingManager,
+		auth:     authManager,
+		loginURL: loginURL,
+
 		logger:    log.With().Str("module", "proxy").Logger(),
 		waitChans: map[string]*wait{},
 
@@ -216,6 +226,18 @@ func (p *ProxyManagerCtx) newProxyHandler(prefix, host string) http.Handler {
 		p.logger.Err(err).Str("prefix", prefix).Msg("proxy error")
 		http.Error(w, "unable to connect to room", http.StatusBadGateway)
 	}
+
+	director := handler.Director
+	handler.Director = func(r *http.Request) {
+		director(r)
+		stripSessionCookie(r)
+
+		// we need an uncompressed page to inject branding
+		if p.injectEnabled() && isPageRequest(r) {
+			r.Header.Del("Accept-Encoding")
+		}
+	}
+	handler.ModifyResponse = p.injectBranding
 	return http.StripPrefix(prefix, handler)
 }
 
@@ -256,6 +278,16 @@ func (p *ProxyManagerCtx) waitForPath(w http.ResponseWriter, r *http.Request, pa
 func (p *ProxyManagerCtx) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cleanPath := path.Clean(r.URL.Path)
 
+	// require signed in user to access rooms
+	if p.auth != nil && p.auth.Policy().RoomsRequireLogin && !p.signedIn(r) {
+		if isPageRequest(r) {
+			p.RoomLoginRequired(w, r, p.loginURL)
+		} else {
+			http.Error(w, "authentication required", http.StatusUnauthorized)
+		}
+		return
+	}
+
 	// get proxy by room name
 	p.mu.RLock()
 	proxy, prefix, ok := p.handlers.Match(cleanPath)
@@ -270,13 +302,13 @@ func (p *ProxyManagerCtx) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if !ok {
-			RoomNotFound(w, r, p.waitEnabled)
+			p.RoomNotFound(w, r, p.waitEnabled)
 		} else if proxy.paused {
-			RoomPaused(w, r, p.waitEnabled)
+			p.RoomPaused(w, r, p.waitEnabled)
 		} else if !proxy.running {
-			RoomNotRunning(w, r, p.waitEnabled)
+			p.RoomNotRunning(w, r, p.waitEnabled)
 		} else {
-			RoomNotReady(w, r, p.waitEnabled)
+			p.RoomNotReady(w, r, p.waitEnabled)
 		}
 		return
 	}
@@ -290,7 +322,7 @@ func (p *ProxyManagerCtx) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// if not proxying, just return room ready
 	if proxy.handler == nil {
-		RoomReady(w, r)
+		p.RoomReady(w, r)
 		return
 	}
 

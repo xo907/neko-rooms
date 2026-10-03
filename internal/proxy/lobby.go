@@ -1,8 +1,15 @@
 package proxy
 
 import (
+	"fmt"
+	"html"
+	"html/template"
 	"net/http"
+	"net/url"
+	"strings"
+	"time"
 
+	"github.com/m1k1o/neko-rooms/internal/branding"
 	"github.com/m1k1o/neko-rooms/internal/utils"
 )
 
@@ -40,22 +47,82 @@ func roomWait(w http.ResponseWriter, r *http.Request) {
 	</script>`))
 }
 
-func RoomNotFound(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
-	utils.Swal2Response(w, `
+// lobbyPage builds the page shell from current branding.
+func (p *ProxyManagerCtx) lobbyPage() (utils.Swal2Page, branding.Lobby) {
+	page := utils.DefaultSwal2Page()
+	if p.branding == nil {
+		return page, branding.Default().Lobby
+	}
+
+	b := p.branding.Get()
+	l := b.Lobby
+
+	page.Title = b.Expand(l.PageTitle, time.Now().Year())
+	page.AppName = b.AppName
+	page.Favicon = b.Favicon
+	page.FontURL = b.Theme.FontURL
+	page.PoweredBy = b.Footer.ShowPoweredBy
+	if l.ShowLogo {
+		page.Logo = b.Logo
+	}
+	if l.FontFamily != "" {
+		page.FontFamily = template.CSS(l.FontFamily)
+	}
+	if l.BackgroundColor != "" {
+		page.BackgroundColor = template.CSS(l.BackgroundColor)
+	}
+	if l.BackgroundImage != "" {
+		page.BackgroundImage = template.CSS(l.BackgroundImage)
+	}
+	if l.PopupColor != "" {
+		page.PopupColor = template.CSS(l.PopupColor)
+	}
+	if l.TextColor != "" {
+		page.TextColor = template.CSS(l.TextColor)
+	}
+	if l.ButtonColor != "" {
+		page.ButtonColor = template.CSS(l.ButtonColor)
+	}
+	page.CustomCSS = template.CSS(l.CustomCSS)
+
+	return page, l
+}
+
+func lobbyMessage(msg string) string {
+	var sb strings.Builder
+	for _, line := range strings.Split(msg, "\n") {
+		sb.WriteString("<div>")
+		sb.WriteString(html.EscapeString(line))
+		sb.WriteString("</div>")
+	}
+	return sb.String()
+}
+
+func lobbyBody(icon, title, message, actions string) template.HTML {
+	return template.HTML(fmt.Sprintf(`
 		<div class="swal2-header">
-			<div class="swal2-icon swal2-error">
-				<div class="swal2-icon-content">X</div>
-			</div>
-			<h2 class="swal2-title">Room not found!</h2>
+			%s
+			<h2 class="swal2-title">%s</h2>
 		</div>
-		<div class="swal2-content">
-			<div>The room you are trying to join does not exist.</div>
-			<div>You can wait on this page until it will be created.</div>
-		</div>
-		<div class="swal2-actions">
-			<div class="swal2-loader" style="display:none;"></div>
-		</div>
-	`)
+		<div class="swal2-content">%s</div>
+		<div class="swal2-actions">%s</div>
+	`, icon, html.EscapeString(title), lobbyMessage(message), actions))
+}
+
+const (
+	iconError   = `<div class="swal2-icon swal2-error"><div class="swal2-icon-content">X</div></div>`
+	iconWarning = `<div class="swal2-icon swal2-warning"><div class="swal2-icon-content">!</div></div>`
+	iconInfo    = `<div class="swal2-icon swal2-info"><div class="swal2-icon-content">i</div></div>`
+
+	loaderHidden  = `<div class="swal2-loader" style="display:none;"></div>`
+	loaderVisible = `<div class="swal2-loader"></div>`
+	reloadButton  = `<button type="button" onclick="location = location" class="swal2-confirm swal2-styled" style="margin-top: 1.25em">Reload</button>`
+)
+
+func (p *ProxyManagerCtx) RoomNotFound(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
+	page, l := p.lobbyPage()
+	page.Body = lobbyBody(iconError, l.NotFound.Title, l.NotFound.Message, loaderHidden)
+	utils.Swal2Render(w, page)
 
 	if waitEnabled {
 		roomWait(w, r)
@@ -64,22 +131,10 @@ func RoomNotFound(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
 	}
 }
 
-func RoomNotRunning(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
-	utils.Swal2Response(w, `
-		<div class="swal2-header">
-			<div class="swal2-icon swal2-warning">
-				<div class="swal2-icon-content">!</div>
-			</div>
-			<h2 class="swal2-title">Room is not running!</h2>
-		</div>
-		<div class="swal2-content">
-			<div>The room you are trying to join is not running.</div>
-			<div>You can wait on this page until it will be started.</div>
-		</div>
-		<div class="swal2-actions">
-			<div class="swal2-loader" style="display:none;"></div>
-		</div>
-	`)
+func (p *ProxyManagerCtx) RoomNotRunning(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
+	page, l := p.lobbyPage()
+	page.Body = lobbyBody(iconWarning, l.NotRunning.Title, l.NotRunning.Message, loaderHidden)
+	utils.Swal2Render(w, page)
 
 	if waitEnabled {
 		roomWait(w, r)
@@ -87,23 +142,11 @@ func RoomNotRunning(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
 		w.Write([]byte(`<meta http-equiv="refresh" content="10">`))
 	}
 }
-func RoomPaused(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
-	utils.Swal2Response(w, `
-		<div class="swal2-header">
-			<div class="swal2-icon swal2-warning">
-				<div class="swal2-icon-content">!</div>
-			</div>
-			<h2 class="swal2-title">Room is paused!</h2>
-		</div>
-		<div class="swal2-content">
-			<div>The room you are trying to join is paused.</div>
-			<div>You can wait on this page until it will be unpaused.</div>
-		</div>
-		<div class="swal2-actions">
-			<div class="swal2-loader" style="display:none;"></div>
-			<button type="button" onclick="location = location" class="swal2-confirm swal2-styled" style="margin-top: 1.25em">Reload</button>
-		</div>
-	`)
+
+func (p *ProxyManagerCtx) RoomPaused(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
+	page, l := p.lobbyPage()
+	page.Body = lobbyBody(iconWarning, l.Paused.Title, l.Paused.Message, loaderHidden+reloadButton)
+	utils.Swal2Render(w, page)
 
 	if waitEnabled {
 		roomWait(w, r)
@@ -112,24 +155,10 @@ func RoomPaused(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
 	}
 }
 
-func RoomNotReady(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
-	utils.Swal2Response(w, `
-		<meta http-equiv="refresh" content="2">
-
-		<div class="swal2-header">
-			<div class="swal2-icon swal2-info">
-				<div class="swal2-icon-content">i</div>
-			</div>
-			<h2 class="swal2-title">Room is not ready, yet!</h2>
-		</div>
-		<div class="swal2-content">
-			<div>Please wait, until this room is ready so you can join. This should happen any second now.</div>
-		</div>
-		<div class="swal2-actions">
-			<div class="swal2-loader"></div>
-			<button type="button" onclick="location = location" class="swal2-confirm swal2-styled" style="margin-top: 1.25em">Reload</button>
-		</div>
-	`)
+func (p *ProxyManagerCtx) RoomNotReady(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
+	page, l := p.lobbyPage()
+	page.Body = `<meta http-equiv="refresh" content="2">` + lobbyBody(iconInfo, l.NotReady.Title, l.NotReady.Message, loaderVisible+reloadButton)
+	utils.Swal2Render(w, page)
 
 	if waitEnabled {
 		roomWait(w, r)
@@ -138,26 +167,30 @@ func RoomNotReady(w http.ResponseWriter, r *http.Request, waitEnabled bool) {
 	}
 }
 
-func RoomReady(w http.ResponseWriter, r *http.Request) {
-	utils.Swal2Response(w, `
-		<div class="swal2-header">
-			<div class="swal2-icon swal2-success swal2-icon-show" style="display: flex;">
-				<div class="swal2-success-circular-line-left" style="background-color: rgb(47, 49, 54);"></div>
-				<span class="swal2-success-line-tip"></span> <span class="swal2-success-line-long"></span>
-				<div class="swal2-success-ring"></div> <div class="swal2-success-fix" style="background-color: rgb(47, 49, 54);"></div>
-				<div class="swal2-success-circular-line-right" style="background-color: rgb(47, 49, 54);"></div>
-			</div>
-			<h2 class="swal2-title">Room is ready!</h2>
-		</div>
-		<div class="swal2-content">
-			<div>Requested room is ready, you can join now.</div>
-			<div style="padding-top: .5em;">Try to reload page.</div>
-		</div>
-		<div class="swal2-actions">
-			<button type="button" onclick="location = location" class="swal2-confirm swal2-styled">Go to room</button>
-		</div>
-		<div class="swal2-content swal2-actions">
+func (p *ProxyManagerCtx) RoomReady(w http.ResponseWriter, r *http.Request) {
+	page, l := p.lobbyPage()
+	popup := html.EscapeString(string(page.PopupColor))
+	icon := fmt.Sprintf(`
+		<div class="swal2-icon swal2-success swal2-icon-show" style="display: flex;">
+			<div class="swal2-success-circular-line-left" style="background-color: %[1]s;"></div>
+			<span class="swal2-success-line-tip"></span> <span class="swal2-success-line-long"></span>
+			<div class="swal2-success-ring"></div> <div class="swal2-success-fix" style="background-color: %[1]s;"></div>
+			<div class="swal2-success-circular-line-right" style="background-color: %[1]s;"></div>
+		</div>`, popup)
+	page.Body = lobbyBody(icon, l.Ready.Title, l.Ready.Message,
+		`<button type="button" onclick="location = location" class="swal2-confirm swal2-styled">Go to room</button>`) +
+		`<div class="swal2-content swal2-actions">
 			<small>If you see this page after refresh, <br /> it can mean misconfiguration on your side.</small>
-		</div>
-	`)
+		</div>`
+	utils.Swal2Render(w, page)
+}
+
+func (p *ProxyManagerCtx) RoomLoginRequired(w http.ResponseWriter, r *http.Request, loginURL string) {
+	page, l := p.lobbyPage()
+	target := loginURL + "#/login?next=" + url.QueryEscape(r.URL.RequestURI())
+	page.Body = lobbyBody(iconInfo, l.LoginRequired.Title, l.LoginRequired.Message,
+		fmt.Sprintf(`<a href="%s" class="swal2-confirm swal2-styled" style="text-decoration:none">Sign in</a>`, html.EscapeString(target)))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	utils.Swal2Render(w, page)
 }

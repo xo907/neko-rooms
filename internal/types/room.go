@@ -172,6 +172,7 @@ type RoomManager interface {
 	GetEntryByName(ctx context.Context, name string) (*RoomEntry, error)
 	GetSettings(ctx context.Context, id string) (*RoomSettings, error)
 	GetStats(ctx context.Context, id string) (*RoomStats, error)
+	GetScreenshot(ctx context.Context, id string) ([]byte, error)
 	Remove(ctx context.Context, id string) error
 
 	Start(ctx context.Context, id string) error

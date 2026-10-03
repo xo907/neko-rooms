@@ -1,6 +1,7 @@
 package room
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"github.com/containerd/errdefs"
 	dockerContainer "github.com/docker/docker/api/types/container"
 	dockerFilters "github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/pkg/stdcopy"
 
 	"github.com/m1k1o/neko-rooms/internal/types"
 )
@@ -137,4 +139,37 @@ func (manager *RoomManagerCtx) containerExec(ctx context.Context, id string, cmd
 
 	data, err := io.ReadAll(conn.Reader)
 	return string(data), err
+}
+
+// containerExecRaw runs a command without TTY and returns raw stdout, safe for binary output.
+func (manager *RoomManagerCtx) containerExecRaw(ctx context.Context, id string, cmd []string) ([]byte, error) {
+	exec, err := manager.client.ContainerExecCreate(ctx, id, dockerContainer.ExecOptions{
+		AttachStdout: true,
+		AttachStderr: true,
+		Cmd:          cmd,
+	})
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil, types.ErrRoomNotFound
+		}
+		return nil, err
+	}
+
+	conn, err := manager.client.ContainerExecAttach(ctx, exec.ID, dockerContainer.ExecAttachOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	var stdout, stderr bytes.Buffer
+	if _, err := stdcopy.StdCopy(&stdout, &stderr, conn.Reader); err != nil {
+		return nil, err
+	}
+
+	inspect, err := manager.client.ContainerExecInspect(ctx, exec.ID)
+	if err == nil && inspect.ExitCode != 0 {
+		return nil, fmt.Errorf("command exited with code %d: %s", inspect.ExitCode, strings.TrimSpace(stderr.String()))
+	}
+
+	return stdout.Bytes(), nil
 }

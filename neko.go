@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
@@ -12,11 +13,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/m1k1o/neko-rooms/internal/api"
+	"github.com/m1k1o/neko-rooms/internal/auth"
+	"github.com/m1k1o/neko-rooms/internal/branding"
+	"github.com/m1k1o/neko-rooms/internal/community"
 	"github.com/m1k1o/neko-rooms/internal/config"
 	"github.com/m1k1o/neko-rooms/internal/proxy"
 	"github.com/m1k1o/neko-rooms/internal/pull"
 	"github.com/m1k1o/neko-rooms/internal/room"
 	"github.com/m1k1o/neko-rooms/internal/server"
+	"github.com/m1k1o/neko-rooms/internal/store"
 )
 
 const Header = `&34
@@ -107,8 +112,12 @@ type MainCtx struct {
 	Version *Version
 	Configs *Configs
 
-	logger        zerolog.Logger
-	roomManager   *room.RoomManagerCtx
+	logger           zerolog.Logger
+	store            *store.Store
+	authManager      *auth.Manager
+	brandingManager  *branding.Manager
+	communityService *community.Service
+	roomManager      *room.RoomManagerCtx
 	pullManager   *pull.PullManagerCtx
 	apiManager    *api.ApiManagerCtx
 	proxyManager  *proxy.ProxyManagerCtx
@@ -120,6 +129,28 @@ func (main *MainCtx) Preflight() {
 }
 
 func (main *MainCtx) Start() {
+	var err error
+
+	main.store, err = store.Open(main.Configs.Server.DataDir)
+	if err != nil {
+		main.logger.Panic().Err(err).Str("data_dir", main.Configs.Server.DataDir).Msg("unable to open database")
+	}
+
+	main.authManager, err = auth.New(main.store, main.Configs.Server.Proxy, "/")
+	if err != nil {
+		main.logger.Panic().Err(err).Msg("unable to start auth manager")
+	}
+
+	if err := main.authManager.Bootstrap(main.Configs.Server.Admin.Username, main.Configs.Server.Admin.Password); err != nil {
+		main.logger.Panic().Err(err).Msg("unable to bootstrap admin account")
+	}
+
+	adminBase := strings.TrimSuffix(main.Configs.Server.Admin.PathPrefix, "/")
+	main.brandingManager, err = branding.New(main.store, adminBase)
+	if err != nil {
+		main.logger.Panic().Err(err).Msg("unable to load branding")
+	}
+
 	client, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
@@ -143,14 +174,27 @@ func (main *MainCtx) Start() {
 		main.Configs.Room.NekoImages,
 	)
 
+	main.communityService = community.New(
+		main.roomManager,
+		main.store,
+		main.authManager,
+	)
+	main.communityService.Start()
+
 	main.apiManager = api.New(
 		main.roomManager,
 		main.pullManager,
+		main.authManager,
+		main.brandingManager,
+		main.communityService,
 	)
 
 	main.proxyManager = proxy.New(
 		main.roomManager,
 		main.Configs.Room.WaitEnabled,
+		main.brandingManager,
+		main.authManager,
+		adminBase+"/",
 	)
 	main.proxyManager.Start()
 
@@ -159,6 +203,7 @@ func (main *MainCtx) Start() {
 		main.Configs.Room,
 		main.Configs.Server,
 		main.proxyManager,
+		main.brandingManager,
 	)
 	main.serverManager.Start()
 }
@@ -175,8 +220,14 @@ func (main *MainCtx) Shutdown() {
 	err = main.pullManager.Shutdown()
 	main.logger.Err(err).Msg("pull manager shutdown")
 
+	main.communityService.Shutdown()
+	main.authManager.Shutdown()
+
 	err = main.roomManager.EventsLoopStop()
 	main.logger.Err(err).Msg("room events loop shutdown")
+
+	err = main.store.Close()
+	main.logger.Err(err).Msg("database closed")
 }
 
 func (main *MainCtx) ServeCommand(cmd *cobra.Command, args []string) {

@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/m1k1o/neko-rooms/internal/branding"
 	"github.com/m1k1o/neko-rooms/internal/config"
 	"github.com/m1k1o/neko-rooms/internal/types"
 )
@@ -31,7 +32,7 @@ type ServerManagerCtx struct {
 	config *config.Server
 }
 
-func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Server, proxyHandler http.Handler) *ServerManagerCtx {
+func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Server, proxyHandler http.Handler, brandingManager *branding.Manager) *ServerManagerCtx {
 	logger := log.With().Str("module", "server").Logger()
 
 	router := chi.NewRouter()
@@ -54,7 +55,7 @@ func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Se
 				return true
 			},
 			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Requested-With"},
 			AllowCredentials: true,
 			MaxAge:           300, // Maximum value not ignored by any of major browsers
 		}))
@@ -155,21 +156,32 @@ func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Se
 			})
 		}
 
-		// if basic auth is enabled
-		if config.Admin.Username != "" && config.Admin.Password != "" {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				user, pass, ok := r.BasicAuth()
-				if !ok || user != config.Admin.Username || pass != config.Admin.Password {
-					w.Header().Add("WWW-Authenticate", `Basic realm="neko-rooms admin"`)
-					w.WriteHeader(http.StatusUnauthorized)
-					return
-				}
+		return next
+	}
 
-				next.ServeHTTP(w, r)
-			})
+	// serves a file from the static directory, index.html is rendered with branding
+	serveStatic := func(w http.ResponseWriter, r *http.Request, filePath string) {
+		filePath = path.Clean("/" + filePath)
+		if filePath == "/" || filePath == "/index.html" {
+			raw, err := os.ReadFile(filepath.Join(config.Admin.Static, "index.html"))
+			if err != nil {
+				http.Error(w, "admin client not found", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Write(brandingManager.RenderIndex(raw))
+			return
 		}
 
-		return next
+		fullPath := filepath.Join(config.Admin.Static, filepath.FromSlash(filePath))
+		if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+			http.ServeFile(w, r, fullPath)
+		} else if err == nil || errors.Is(err, fs.ErrNotExist) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}
 
 	// DEPRECATED: admin should not be served from the same path as rooms
@@ -199,9 +211,8 @@ func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Se
 
 				// check if file exists to serve it
 				if _, ok := staticFiles[filePath]; ok {
-					// serve protected assets
 					protected(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						http.ServeFile(w, r, filePath)
+						serveStatic(w, r, r.URL.Path)
 					})).ServeHTTP(w, r)
 					return
 				}
@@ -210,30 +221,25 @@ func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Se
 			})
 		})
 
-		// serve protected API
+		// serve API
 		router.With(protected).Route("/api", ApiManager.Mount)
 	} else {
 		router.With(protected).Route(config.Admin.PathPrefix+"/", func(r chi.Router) {
-			// serve protected API
+			// serve API
 			r.Route("/api", ApiManager.Mount)
 
 			// serve static files
 			r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-				filePath := chi.URLParam(r, "*")
-				if filePath == "" {
-					filePath = "index.html"
-				}
-				filePath = filepath.Clean(filePath)
-				filePath = filepath.Join(config.Admin.Static, filePath)
-				if _, err := os.Stat(filePath); err == nil {
-					http.ServeFile(w, r, filePath)
-				} else if errors.Is(err, fs.ErrNotExist) {
-					http.NotFound(w, r)
-				} else {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-				}
+				serveStatic(w, r, chi.URLParam(r, "*"))
 			})
 		})
+
+		// the homepage lives in the admin client, send visitors of the root there
+		if config.Admin.PathPrefix != "" {
+			router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, config.Admin.PathPrefix+"/", http.StatusFound)
+			})
+		}
 	}
 
 	// mount pprof endpoint

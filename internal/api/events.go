@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/m1k1o/neko-rooms/internal/auth"
+	"github.com/m1k1o/neko-rooms/internal/types"
 )
 
 func (manager *ApiManagerCtx) events(w http.ResponseWriter, r *http.Request) {
@@ -35,6 +38,16 @@ func (manager *ApiManagerCtx) events(w http.ResponseWriter, r *http.Request) {
 		ping = ticker.C
 	}
 
+	// regular users only receive events of their own rooms
+	u := auth.UserFromContext(r.Context())
+	allowed := func(e types.RoomEvent) bool {
+		if u.IsAdmin() {
+			return true
+		}
+		owned, err := manager.community.OwnedNames(u)
+		return err == nil && owned[e.ContainerLabels["m1k1o.neko_rooms.name"]]
+	}
+
 	// listen for room events
 	events, errs := manager.rooms.Events(r.Context())
 	for {
@@ -48,6 +61,10 @@ func (manager *ApiManagerCtx) events(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		case e := <-events:
+			if !allowed(e) {
+				continue
+			}
+
 			jsonData, err := json.Marshal(e)
 			if err != nil {
 				manager.logger.Err(err).Msg("failed to marshal event")
