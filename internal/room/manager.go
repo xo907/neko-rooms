@@ -1052,3 +1052,43 @@ func (manager *RoomManagerCtx) EventsLoopStop() error {
 func (manager *RoomManagerCtx) Events(ctx context.Context) (<-chan types.RoomEvent, <-chan error) {
 	return manager.events.Events(ctx)
 }
+
+// GetScreenshot returns a JPEG screenshot of the room screen.
+func (manager *RoomManagerCtx) GetScreenshot(ctx context.Context, id string) ([]byte, error) {
+	container, err := manager.inspectContainer(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	labels, err := manager.extractLabels(container.Config.Labels)
+	if err != nil {
+		return nil, err
+	}
+
+	settings := types.RoomSettings{}
+	if err := settings.FromEnv(labels.ApiVersion, container.Config.Env); err != nil {
+		return nil, err
+	}
+
+	var target string
+	switch labels.ApiVersion {
+	case 2:
+		target = "http://127.0.0.1:8080/screenshot.jpg?pwd=" + url.QueryEscape(settings.AdminPass)
+	case 3:
+		target = "http://127.0.0.1:8080/api/room/screen/shot.jpg?quality=60&token=" + url.QueryEscape(settings.AdminPass)
+	default:
+		return nil, fmt.Errorf("unsupported API version: %d", labels.ApiVersion)
+	}
+
+	data, err := manager.containerExecRaw(ctx, id, []string{"wget", "-q", "-O-", target})
+	if err != nil {
+		return nil, err
+	}
+
+	// must be a jpeg
+	if len(data) < 3 || data[0] != 0xFF || data[1] != 0xD8 {
+		return nil, fmt.Errorf("invalid screenshot data")
+	}
+
+	return data, nil
+}

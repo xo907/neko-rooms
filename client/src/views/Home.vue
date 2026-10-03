@@ -1,8 +1,14 @@
 <template>
-  <v-container>
+  <v-container class="py-8">
+    <div class="d-flex align-center flex-wrap mb-6" style="gap: 12px">
+      <div>
+        <h1 class="nr-page-title nr-heading text-h4">{{ isAdmin ? 'All rooms' : 'My rooms' }}</h1>
+        <div class="text--secondary" v-if="!isAdmin && roomLimit > 0">{{ roomCount }} of {{ roomLimit }} rooms used</div>
+      </div>
+    </div>
 
     <!-- show off-site -->
-    <div v-if="configConnections" class="text-center" style="position: absolute; left: 50%; transform: translate(-50%, -100%)">
+    <div v-if="isAdmin && configConnections" class="text-center mb-6">
       <p>Ports used:</p>
       <v-progress-circular
         :rotate="270"
@@ -35,27 +41,28 @@
         </v-tooltip>
       </v-col>
       <v-col class="text-right">
-        <RoomsQuick class="mr-3" />
-        <v-dialog v-model="dialog" persistent max-width="600px">
+        <RoomsQuick v-if="canCreate" class="mr-3" />
+        <v-dialog v-model="dialog" persistent max-width="640px">
           <template v-slot:activator="{ on, attrs }">
             <v-btn
               v-bind="attrs"
               v-on="on"
-              color="success"
-              dark
+              color="primary"
+              depressed
+              :disabled="!canCreate"
             >
-              + Add room
+              <v-icon left>mdi-plus</v-icon> New room
             </v-btn>
           </template>
 
-          <RoomsCreate v-if="dialog" @finished="dialog = false" />
+          <RoomsCreate v-if="dialog" @finished="onCreated" />
         </v-dialog>
       </v-col>
     </v-row>
 
     <RoomsList :loading="loading" />
 
-    <div class="mt-5 text-center">
+    <div class="mt-5 text-center" v-if="canPull">
       <Pull />
     </div>
   </v-container>
@@ -92,6 +99,37 @@ export default class Home extends Vue {
     { text: '30s', value: 30 },
     { text: '60s', value: 60 },
   ]
+
+  get isAdmin(): boolean {
+    return this.$store.getters.isAdmin
+  }
+
+  get canCreate(): boolean {
+    return this.$store.getters.canCreateRooms
+  }
+
+  get canPull(): boolean {
+    const p = this.$store.getters.policy
+    return this.isAdmin || (p && p.users_can_pull_images)
+  }
+
+  get roomLimit(): number {
+    const st = this.$store.state.app.status
+    return st ? st.room_limit : 0
+  }
+
+  get roomCount(): number {
+    const st = this.$store.state.app.status
+    return st ? st.room_count : 0
+  }
+
+  onCreated() {
+    this.dialog = false
+    this.$store.dispatch('APP_STATUS')
+    if (this.$route.query.create) {
+      this.$router.replace({ query: {} }).catch(() => { /* ignore */ })
+    }
+  }
 
   get configConnections() {
     return this.$store.state.roomsConfig.connections
@@ -149,6 +187,10 @@ export default class Home extends Vue {
     }
 
     await this.LoadRooms()
+
+    if (this.$route.query.create && this.canCreate) {
+      this.dialog = true
+    }
   }
 
   beforeDestroy() {

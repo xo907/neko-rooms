@@ -21,7 +21,7 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
 
   neko-rooms:
-    image: "m1k1o/neko-rooms:latest"
+    image: "ghcr.io/xo907/neko-rooms:latest"
     restart: "unless-stopped"
     environment:
       - "TZ=Europe/Vienna"
@@ -36,6 +36,7 @@ services:
       - "NEKO_ROOMS_PATH_PREFIX=/rooms/"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./data:/data" # users, branding & settings
       - "/opt/neko-rooms/data:/data"
     labels:
       - "traefik.enable=true"

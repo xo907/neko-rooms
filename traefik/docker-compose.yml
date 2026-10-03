@@ -33,12 +33,13 @@ services:
       - "./config:/config"
 
   neko-rooms:
-    image: "m1k1o/neko-rooms:latest"
+    image: "ghcr.io/xo907/neko-rooms:latest"
     restart: "unless-stopped"
     env_file:
       - ".env"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./data:/data" # users, branding & settings
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.neko-rooms-frontend.loadbalancer.server.port=8080"
@@ -46,4 +47,5 @@ services:
       - "traefik.http.routers.neko-rooms.rule=Host(`${NEKO_ROOMS_TRAEFIK_DOMAIN}`)"
       - "traefik.http.routers.neko-rooms.tls=true"
       - "traefik.http.routers.neko-rooms.tls.certresolver=${NEKO_ROOMS_TRAEFIK_CERTRESOLVER}"
-      - "traefik.http.routers.neko-rooms.middlewares=basicauth@file"
+      # neko-rooms has its own accounts & admin panel now, the homepage must stay public
+      # - "traefik.http.routers.neko-rooms.middlewares=basicauth@file"

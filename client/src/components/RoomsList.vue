@@ -5,6 +5,13 @@
       <template v-slot:[`item.url`]="{ item }">
         <v-tooltip bottom open-delay="300">
           <template v-slot:activator="{ on, attrs }">
+            <v-btn v-bind="attrs" v-on="on" :to="{ name: 'room', params: { name: item.name } }" color="primary" small class="mr-2">
+              <v-icon small>mdi-card-account-details-star-outline</v-icon></v-btn>
+          </template>
+          <span>Room page: visibility, invites & details</span>
+        </v-tooltip>
+        <v-tooltip bottom open-delay="300">
+          <template v-slot:activator="{ on, attrs }">
             <v-btn v-bind="attrs" v-on="on" @click="roomId = item.id; dialog = true" color="blue" small class="mr-2">
               <v-icon small>mdi-information-outline</v-icon></v-btn>
           </template>

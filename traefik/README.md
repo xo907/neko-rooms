@@ -9,7 +9,7 @@ If you don't have any clue about docker and stuff but only want to have fun with
 - Run install script and follow instructions.
 
 ```bash
-wget -O neko-rooms.sh https://raw.githubusercontent.com/m1k1o/neko-rooms/master/traefik/install
+wget -O neko-rooms.sh https://raw.githubusercontent.com/xo907/neko-rooms/master/traefik/install
 sudo bash neko-rooms.sh
 ```
 
@@ -43,16 +43,12 @@ cp .env.example .env
 
 ### Step 2
 
-Create `usersfile` with your users:
+Set the first admin account in `.env` (`NEKO_ROOMS_ADMIN_USERNAME` / `NEKO_ROOMS_ADMIN_PASSWORD`). Leave the password empty to get a one-time setup token in the logs instead. Further users are managed in the admin panel, see [docs/admin-panel.md](../docs/admin-panel.md).
+
+`usersfile` is no longer used for neko-rooms itself, but the compose file still mounts it:
 
 ```bash
 touch usersfile
-```
-
-And add as many users as you like:
-
-```bash
-echo $(htpasswd -nb user password) >> usersfile
 ```
 
 ### Step 3 (HTTPS only)

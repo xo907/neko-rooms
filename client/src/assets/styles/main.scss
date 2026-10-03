@@ -5,10 +5,16 @@
 @import "vendor/sweetalert2";
 
 html, body {
-  -webkit-font-smoothing: subpixel-antialiased;
-  background-color: $background-tertiary;
-  font-family: $text-family;
+  -webkit-font-smoothing: antialiased;
   font-size: $text-size;
-  color:  $text-normal;
-  overflow: hidden;
 }
+
+// shared helpers
+.nr-clickable { cursor: pointer; }
+.nr-gradient-text {
+  background: linear-gradient(90deg, var(--nr-primary), var(--nr-accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.nr-page-title { font-weight: 800; letter-spacing: -0.01em; }

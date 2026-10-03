@@ -23,6 +23,7 @@ type Server struct {
 	CORS    bool
 	PProf   bool
 	Metrics bool
+	DataDir string
 
 	Admin Admin
 }
@@ -63,6 +64,11 @@ func (Server) Init(cmd *cobra.Command) error {
 		return err
 	}
 
+	cmd.PersistentFlags().String("data_dir", "./data", "directory for the database (users, sessions, branding, settings)")
+	if err := viper.BindPFlag("data_dir", cmd.PersistentFlags().Lookup("data_dir")); err != nil {
+		return err
+	}
+
 	// Admin
 
 	cmd.PersistentFlags().String("admin.static", "", "path to neko_rooms admin client files to serve")
@@ -80,12 +86,12 @@ func (Server) Init(cmd *cobra.Command) error {
 		return err
 	}
 
-	cmd.PersistentFlags().String("admin.username", "admin", "require auth: admin username")
+	cmd.PersistentFlags().String("admin.username", "admin", "username of the initial admin account, created on first start when no users exist")
 	if err := viper.BindPFlag("admin.username", cmd.PersistentFlags().Lookup("admin.username")); err != nil {
 		return err
 	}
 
-	cmd.PersistentFlags().String("admin.password", "", "require auth: admin password")
+	cmd.PersistentFlags().String("admin.password", "", "password of the initial admin account; if empty, a one-time setup token is logged on first start")
 	if err := viper.BindPFlag("admin.password", cmd.PersistentFlags().Lookup("admin.password")); err != nil {
 		return err
 	}
@@ -101,6 +107,7 @@ func (s *Server) Set() {
 	s.CORS = viper.GetBool("cors")
 	s.PProf = viper.GetBool("pprof")
 	s.Metrics = viper.GetBool("metrics")
+	s.DataDir = viper.GetString("data_dir")
 
 	s.Admin.Static = viper.GetString("admin.static")
 	s.Admin.PathPrefix = path.Join("/", path.Clean(viper.GetString("admin.path_prefix")))

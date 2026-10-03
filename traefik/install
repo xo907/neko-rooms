@@ -124,7 +124,7 @@ echo "[Y] Docker is installed..."
 #
 
 apt-get update
-apt-get install -y apache2-utils sed
+apt-get install -y sed
 
 echo "[Y] Dependencies are installed..."
 
@@ -173,34 +173,33 @@ if [[ -z "${NEKO_NAT1TO1}" ]]; then
   NEKO_NAT1TO1="${PUBLIC_IP}"
 fi
 
+# kept for compatibility with older compose files that mount it
 touch "./usersfile"
 
-# Users
+# First admin account of the neko-rooms admin panel
+echo "Create the first admin account (you can add more users later in the admin panel):"
+read -rp " | - Username: (default admin) " ADMIN_USER
+if [[ -z "${ADMIN_USER}" ]]; then
+  ADMIN_USER="admin"
+fi
+
 while true; do
-  echo "Add new user:"
-
-  # Username
-  read -rp " | - Username: (default admin) " USR_NAME
-  if [[ -z "${USR_NAME}" ]]; then
-    USR_NAME="admin"
-  fi
-
-  # Password
-  read -rp " | - Password: (default admin) " -s USR_PASS
-  if [[ -z "${USR_PASS}" ]]; then
-    USR_PASS="admin"
-  fi
-
-  htpasswd -nb "${USR_NAME}" "${USR_PASS}" >> usersfile
-
+  read -rp " | - Password (min. 8 characters, empty = print a one-time setup token instead): " -s ADMIN_PASS
   echo
-  read -rp "Do you want to add another user? [y/N] " yn
-  case $yn in
-    "") break ;;
-    [Yy]*) echo ;;
-    [Nn]*) break ;;
-    *) echo "Please answer yes or no." ;;
-  esac
+  if [[ -z "${ADMIN_PASS}" ]]; then
+    break
+  fi
+  if [[ ${#ADMIN_PASS} -lt 8 ]]; then
+    echo "Password is too short."
+    continue
+  fi
+  read -rp " | - Repeat password: " -s ADMIN_PASS2
+  echo
+  if [[ "${ADMIN_PASS}" != "${ADMIN_PASS2}" ]]; then
+    echo "Passwords do not match."
+    continue
+  fi
+  break
 done
 
 echo "[Y] Got all settings..."
@@ -217,7 +216,11 @@ echo "[Y] Got all settings..."
   echo "NEKO_ROOMS_TRAEFIK_NETWORK=neko-rooms-traefik"
   echo "NEKO_ROOMS_TRAEFIK_CERTRESOLVER=lets-encrypt"
   echo "NEKO_NAT1TO1=${NEKO_NAT1TO1}"
+  echo "NEKO_ROOMS_PROXY=true"
+  echo "NEKO_ROOMS_ADMIN_USERNAME=${ADMIN_USER}"
+  echo "NEKO_ROOMS_ADMIN_PASSWORD=${ADMIN_PASS}"
 } > .env
+chmod 600 .env
 
 echo "[Y] Creating env..."
 
@@ -227,12 +230,12 @@ echo "[Y] Creating env..."
 
 mkdir -p "./config"
 
-wget -O "./traefik.yml" "https://raw.githubusercontent.com/m1k1o/neko-rooms/master/traefik/traefik.yml"
+wget -O "./traefik.yml" "https://raw.githubusercontent.com/xo907/neko-rooms/master/traefik/traefik.yml"
 sed -i "s/yourname@example.com/${TRAEFIK_EMAIL}/g" "./traefik.yml"
 
-wget -O "./config/middlewares.yml" "https://raw.githubusercontent.com/m1k1o/neko-rooms/master/traefik/config/middlewares.yml"
-wget -O "./config/routers.yml" "https://raw.githubusercontent.com/m1k1o/neko-rooms/master/traefik/config/routers.yml"
-wget -O "./config/tls.yml" "https://raw.githubusercontent.com/m1k1o/neko-rooms/master/traefik/config/tls.yml"
+wget -O "./config/middlewares.yml" "https://raw.githubusercontent.com/xo907/neko-rooms/master/traefik/config/middlewares.yml"
+wget -O "./config/routers.yml" "https://raw.githubusercontent.com/xo907/neko-rooms/master/traefik/config/routers.yml"
+wget -O "./config/tls.yml" "https://raw.githubusercontent.com/xo907/neko-rooms/master/traefik/config/tls.yml"
 
 touch "./acme.json"
 chmod 600 "./acme.json"
@@ -243,7 +246,7 @@ echo "[Y] Downloading traefik config..."
 # Download docker compose file
 #
 
-wget -O "./docker-compose.yml" "https://raw.githubusercontent.com/m1k1o/neko-rooms/master/traefik/docker-compose.yml"
+wget -O "./docker-compose.yml" "https://raw.githubusercontent.com/xo907/neko-rooms/master/traefik/docker-compose.yml"
 
 # docker-compose was renamed to docker compose, support both
 if docker-compose --version > /dev/null 2>&1; then
@@ -255,3 +258,7 @@ else
 fi
 
 echo "[Y] Finished! You can now visit https://${NEKO_ROOMS_TRAEFIK_DOMAIN}/"
+if [[ -z "${ADMIN_PASS}" ]]; then
+  echo "    Find your one-time setup token with: docker compose logs neko-rooms | grep setup_token"
+fi
+echo "    Remove NEKO_ROOMS_ADMIN_PASSWORD from .env once you have signed in."
