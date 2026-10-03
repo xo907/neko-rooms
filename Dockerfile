@@ -33,6 +33,9 @@ COPY --from=frontend /src/dist/ /var/www
 
 ENV NEKO_ROOMS_BIND=:8080
 ENV NEKO_ROOMS_ADMIN_STATIC=/var/www
+# database with users, sessions, branding & settings
+ENV NEKO_ROOMS_DATA_DIR=/data
+VOLUME /data
 
 EXPOSE 8080
 

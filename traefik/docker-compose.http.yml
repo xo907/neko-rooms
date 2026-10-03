@@ -28,7 +28,7 @@ services:
       # - "./traefik/usersfile:/usersfile:ro"
 
   neko-rooms:
-    image: "m1k1o/neko-rooms:latest"
+    image: "ghcr.io/xo907/neko-rooms:latest"
     restart: "unless-stopped"
     environment:
       - "TZ=Europe/Vienna"
@@ -39,6 +39,7 @@ services:
       - "NEKO_ROOMS_INSTANCE_URL=http://10.8.0.1:8080/" # external URL
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./data:/data" # users, branding & settings
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.neko-rooms-frontend.loadbalancer.server.port=8080"

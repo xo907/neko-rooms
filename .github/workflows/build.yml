@@ -6,8 +6,17 @@ on:
       - master
     tags:
       - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
+  test-server:
+    name: Test Server
+    uses: ./.github/workflows/server_test.yml
+
   build-client:
     name: Build Client Artifacts
     uses: ./.github/workflows/client_build.yml
@@ -15,7 +24,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: build-client
+    needs: [test-server, build-client]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,31 +43,50 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # image names must be lowercase
+      - name: Image names
+        id: names
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"
+          images="ghcr.io/${repo}"
+          if [ -n "$DOCKERHUB_USERNAME" ]; then
+            images="${images}"$'\n'"docker.io/${DOCKERHUB_USERNAME,,}/${repo#*/}"
+          fi
+          {
+            echo "images<<EOF"
+            echo "$images"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "dockerhub=$([ -n "$DOCKERHUB_USERNAME" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata (tags, labels) for Docker
         uses: docker/metadata-action@v5
         id: meta
         with:
-          images: |
-            docker.io/${{ github.repository }}
-            ghcr.io/${{ github.repository }}
+          images: ${{ steps.names.outputs.images }}
           tags: |
             type=raw,value=latest,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=sha,format=short
 
+      # optional, only when DOCKERHUB_USERNAME and DOCKER_TOKEN secrets are set
       - name: Log in to Docker Hub
+        if: steps.names.outputs.dockerhub == 'true'
         uses: docker/login-action@v3
         with:
-          username: ${{ github.actor }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
-      
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_ACCESS_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Remove client stage from Dockerfile
         # Change dockerfile: remove first stage - everything between # STAGE 1 and # STAGE 2

@@ -10,6 +10,12 @@
 
 Simple room management system for [n.eko](https://github.com/m1k1o/neko). Self hosted rabb.it alternative.
 
+> **This fork** adds a public homepage with a live room directory, user accounts with admin/user roles, friends, room visibility (public / friends / private with invite links) and an admin panel with full branding & theme customization. See [docs/admin-panel.md](./docs/admin-panel.md).
+>
+> ```bash
+> docker pull ghcr.io/xo907/neko-rooms:latest
+> ```
+
 <div align="center">
   <img src="https://github.com/m1k1o/neko-rooms/raw/master/docs/rooms.png" alt="rooms">
   <img src="https://github.com/m1k1o/neko-rooms/raw/master/docs/new_room.png" alt="new room">

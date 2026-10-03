@@ -7,7 +7,7 @@ networks:
 
 services:
   neko-rooms:
-    image: "m1k1o/neko-rooms:latest"
+    image: "ghcr.io/xo907/neko-rooms:latest"
     restart: "unless-stopped"
     environment:
       - "TZ=Europe/Vienna"
@@ -18,7 +18,12 @@ services:
       - "NEKO_ROOMS_INSTANCE_NETWORK=neko-rooms-net"
       - "NEKO_ROOMS_TRAEFIK_ENABLED=false"
       - "NEKO_ROOMS_PATH_PREFIX=/room/"
+      # first admin account, created on first start only (change it afterwards in the admin panel)
+      # leave the password empty to get a one-time setup token in the logs instead
+      - "NEKO_ROOMS_ADMIN_USERNAME=admin"
+      - "NEKO_ROOMS_ADMIN_PASSWORD="
     ports:
       - "8080:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./data:/data" # users, branding & settings
