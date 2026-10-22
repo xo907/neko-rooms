@@ -165,18 +165,19 @@ func (r *Renderer) RoomCard(c Room) ([]byte, error) {
 	if c.Thumbnail != nil {
 		cover(img, art, c.Thumbnail)
 		shade(img, art, color.RGBA{0, 0, 0, 0xff}, func(x, y int) float64 { return 0.3 })
+		shade(img, art, bg, func(x, y int) float64 {
+			t := float64(x-art.Min.X) / 380
+			return 1 - smoothstep(t)
+		})
+		shade(img, art, bg, func(x, y int) float64 {
+			t := float64(Height-y) / 160
+			return 0.6 * (1 - smoothstep(t))
+		})
 	} else {
+		// the glow is soft already, fading it would leave a seam
 		glow(img, 980, 300, 560, c.Accent, 0.34)
 		dots(img, art, 900, 36)
 	}
-	shade(img, art, bg, func(x, y int) float64 {
-		t := float64(x-art.Min.X) / 380
-		return 1 - smoothstep(t)
-	})
-	shade(img, art, bg, func(x, y int) float64 {
-		t := float64(Height-y) / 160
-		return 0.6 * (1 - smoothstep(t))
-	})
 	glow(img, -80, -80, 520, c.Accent, 0.14)
 
 	r.header(img, c.Brand, 40, 26)
