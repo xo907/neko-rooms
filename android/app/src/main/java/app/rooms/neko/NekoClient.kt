@@ -22,6 +22,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -70,13 +71,17 @@ data class RoomState(
 
 // NekoClient joins a neko room with the v3 API: login, websocket signaling,
 // WebRTC media and a data channel for mouse, keyboard and touch input.
-class NekoClient(http: OkHttpClient) {
+class NekoClient(http: OkHttpClient, siteCookies: CookieJar) {
     // own scope: it outlives the screen long enough to log out cleanly
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // no cookie jar: neko sets its session cookie on the whole host, a cookie
-    // from one room would break logging in to the next. Tokens are explicit.
-    private val http = http.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+    // the site session goes along (servers can require it for rooms), but the
+    // neko session cookie is never kept: it is set on the whole host and would
+    // break logging in to the next room. Room tokens are passed explicitly.
+    private val http = http.newBuilder().cookieJar(object : CookieJar {
+        override fun loadForRequest(url: HttpUrl): List<Cookie> = siteCookies.loadForRequest(url)
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {}
+    }).build()
 
     private val _state = MutableStateFlow(RoomState())
     val state: StateFlow<RoomState> = _state
@@ -147,11 +152,16 @@ class NekoClient(http: OkHttpClient) {
         http.newCall(Request.Builder().url(base.resolve("api/login")!!).post(body).build()).execute().use { res ->
             val text = res.body?.string().orEmpty()
             if (!res.isSuccessful) {
+                val detail = runCatching {
+                    json.parseToJsonElement(text).jsonObject["message"]?.jsonPrimitive?.contentOrNull
+                }.getOrNull() ?: text.trim().take(120)
                 throw IllegalStateException(
-                    when (res.code) {
-                        401 -> "The room did not accept the invite, try again from the room page"
-                        403 -> "The room is locked"
-                        else -> "Could not join the room (${res.code})"
+                    when {
+                        res.code == 401 && detail.contains("authentication required") ->
+                            "This server requires you to sign in to join rooms"
+                        res.code == 401 -> "The room did not accept the invite (${detail.ifEmpty { "401" }})"
+                        res.code == 403 -> "The room is locked"
+                        else -> "Could not join the room (${res.code}${if (detail.isNotEmpty()) ": $detail" else ""})"
                     }
                 )
             }

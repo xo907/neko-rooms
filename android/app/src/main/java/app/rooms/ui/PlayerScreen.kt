@@ -125,7 +125,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     val activity = remember(context) { context.findActivity() }
     val view = LocalView.current
     remember { WebRtc.init(context) }
-    val client = remember { NekoClient(WatchPartyApp.instance.http) }
+    val client = remember { NekoClient(WatchPartyApp.instance.http, WatchPartyApp.instance.cookies) }
     val st by client.state.collectAsState()
 
     var room by remember { mutableStateOf<Room?>(null) }
