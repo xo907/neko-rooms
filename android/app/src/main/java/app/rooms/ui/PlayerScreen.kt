@@ -237,7 +237,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
 
     // touching the browser without control takes it when nobody has it
     var lastHint by remember { mutableLongStateOf(0L) }
-    val notHost = {
+    val notHost: () -> Unit = {
         if (st.phase == Phase.Live && st.hostId == null) {
             client.requestControl()
         } else {
@@ -250,7 +250,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
         }
     }
     // a touch on the video puts away the chat keyboard
-    val onStageTouch = {
+    val onStageTouch: () -> Unit = {
         if (!keyboard) focusManager.clearFocus()
         poke++
     }
@@ -283,7 +283,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     Stage(st, client, touch, notHost, onStageTouch, joinError, onBack, Modifier.fillMaxSize())
 
-                    AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+                    androidx.compose.animation.AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
                         Column(
                             Modifier
                                 .fillMaxWidth()
