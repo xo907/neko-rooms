@@ -37,7 +37,8 @@ services:
       - "NEKO_ROOMS_ADMIN_USERNAME=${NEKO_ROOMS_ADMIN_USERNAME:-admin}"
       - "NEKO_ROOMS_ADMIN_PASSWORD=${NEKO_ROOMS_ADMIN_PASSWORD:-}"
     ports:
-      - "${NEKO_ROOMS_PORT:-8188}:8080"
+      # NEKO_ROOMS_BIND_IP limits who can open the site, e.g. 127.0.0.1 behind a proxy
+      - "${NEKO_ROOMS_BIND_IP:-0.0.0.0}:${NEKO_ROOMS_PORT:-8188}:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "neko-rooms-local-data:/data" # users, branding & settings

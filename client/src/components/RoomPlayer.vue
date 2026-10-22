@@ -28,22 +28,28 @@
       </div>
     </transition>
 
-    <!-- sits on the empty side of the neko header, reads as one bar -->
+    <!-- sits on the empty side of the neko header, reads as one bar; its own
+         background also covers the neko logo should the frame not be styled -->
     <div v-if="mode === 'full'" class="nr-bar" :style="barStyle">
       <button type="button" class="nr-bar-btn" title="Back to the site, keep watching" @click="back">
-        <v-icon small>mdi-arrow-left</v-icon>
+        <v-icon>mdi-chevron-left</v-icon>
       </button>
+      <span class="nr-bar-sep" />
       <div class="nr-bar-title">
-        <span class="text-truncate">{{ title }}</span>
-        <span v-if="room && room.ready" class="nr-bar-live"><span class="nr-dot" />{{ room.viewers }}</span>
+        <span class="nr-bar-name">{{ title }}</span>
+        <span v-if="room && room.ready" class="nr-bar-live">
+          <span class="nr-dot" />{{ room.viewers }} watching
+        </span>
       </div>
-      <div v-if="members.length" class="nr-bar-members d-none d-sm-flex">
-        <UserAvatar v-for="m in members" :key="m" :name="m" :src="room && room.avatars ? room.avatars[m] : undefined" :size="22" ring tooltip />
+      <div v-if="members.length" class="nr-bar-members d-none d-md-flex">
+        <UserAvatar v-for="m in members" :key="m" :name="m" :src="room && room.avatars ? room.avatars[m] : undefined" :size="24" ring tooltip />
       </div>
       <button type="button" class="nr-bar-btn" :title="copied ? 'Link copied' : 'Copy link'" @click="share">
         <v-icon small>{{ copied ? 'mdi-check' : 'mdi-link-variant' }}</v-icon>
       </button>
-      <button type="button" class="nr-bar-leave" @click="leave">Leave</button>
+      <button type="button" class="nr-bar-btn nr-bar-btn--leave" title="Leave the room" @click="leave">
+        <v-icon small>mdi-logout-variant</v-icon><span class="d-none d-sm-inline">Leave</span>
+      </button>
     </div>
 
     <!-- mini player -->
@@ -161,68 +167,79 @@ $ease: cubic-bezier(.2, .8, .2, 1);
   z-index: 2;
   top: 0;
   left: 0;
-  height: 52px;
+  height: 51px; // the neko header border stays visible below
+  min-width: 200px; // wider than the neko logo
   max-width: calc(100% - 160px);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 12px;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--nr-bg);
   color: var(--nr-text);
   animation: nr-bar-in .5s $ease .2s both;
 }
 @keyframes nr-bar-in { from { opacity: 0; transform: translateY(-6px); } }
+
+// same size and shape as the neko header buttons on the right
 .nr-bar-btn {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  gap: 6px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
   border-radius: 10px;
   color: var(--nr-muted);
+  font-size: 13px;
+  font-weight: 500;
   transition: background-color .18s, color .18s;
   .v-icon { color: inherit !important; }
-  &:hover { background: var(--nr-hover); color: var(--nr-text); }
+  &:hover, &:focus-visible { background: var(--nr-hover); color: var(--nr-text); }
+}
+.nr-bar-btn--leave:hover, .nr-bar-btn--leave:focus-visible {
+  background: color-mix(in srgb, #f87171 12%, transparent);
+  color: #fca5a5;
+}
+.nr-bar-sep {
+  flex-shrink: 0;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--nr-line-strong);
 }
 .nr-bar-title {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
-  font-size: 14.5px;
+  margin-right: 6px;
+  line-height: 1.2;
+}
+.nr-bar-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 .nr-bar-live {
-  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 22px;
-  padding: 0 9px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--nr-primary) 35%, transparent);
-  background: color-mix(in srgb, var(--nr-primary) 10%, transparent);
+  margin-top: 2px;
   font-size: 11.5px;
-  font-weight: 500;
+  color: var(--nr-muted);
+  white-space: nowrap;
+  .nr-dot { width: 5px; height: 5px; }
 }
 .nr-bar-members {
   flex-shrink: 0;
   align-items: center;
-  padding-left: 4px;
+  margin-right: 4px;
   > * + * { margin-left: -6px; }
-}
-.nr-bar-leave {
-  flex-shrink: 0;
-  height: 30px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--nr-line-strong);
-  color: var(--nr-text);
-  font-size: 13px;
-  font-weight: 600;
-  transition: background-color .18s, border-color .18s, color .18s;
-  &:hover { background: color-mix(in srgb, #f87171 14%, transparent); border-color: color-mix(in srgb, #f87171 45%, transparent); color: #fca5a5; }
 }
 
 .nr-mini-ui {
@@ -283,6 +300,8 @@ const READY_TIMEOUT = 20000
 // styles for the neko client inside the frame, see decorate()
 const FRAME_CSS = `
 html.nr-embedded #neko .header .neko { visibility: hidden !important; }
+html.nr-embedded #neko .room-menu .settings li:has(> .fa-question-circle),
+html.nr-embedded #neko .room-menu .settings li:has(> select) { display: none !important; }
 html.nr-mini, html.nr-mini body { overflow: hidden !important; }
 html.nr-mini #neko .neko-main .header-container,
 html.nr-mini #neko .neko-main .room-container,

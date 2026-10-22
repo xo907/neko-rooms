@@ -30,6 +30,26 @@ Simple room management system for [n.eko](https://github.com/m1k1o/neko). Self h
 
 Builds this checkout, starts it on `http://localhost:8188` and prints the tailnet URLs. See [docs/local.md](./docs/local.md).
 
+## Run on a VPS (public IP, no domain)
+
+On a server with Docker and git, open it to everyone on its public IP:
+
+```bash
+git clone https://github.com/xo907/neko-rooms.git && cd neko-rooms && ./local/up.sh --public
+```
+
+It uses the published image, prints the address and the firewall ports to open. Run `./local/up.sh` again later to update. Details: [docs/local.md](./docs/local.md#vps-public-ip).
+
+### With Nginx Proxy Manager (domain + HTTPS)
+
+If the server runs [Nginx Proxy Manager](https://nginxproxymanager.com), use `--npm` instead:
+
+```bash
+git clone https://github.com/xo907/neko-rooms.git && cd neko-rooms && ./local/up.sh --npm
+```
+
+It joins NPM's docker network, keeps its own port private and prints exactly what to enter in the NPM web UI (proxy host, Websockets, SSL, one Advanced snippet). Step by step: [docs/local.md](./docs/local.md#nginx-proxy-manager-domain--https).
+
 ## Run on a Raspberry Pi
 
 On a Raspberry Pi 4 or 5 with a **64-bit Raspberry Pi OS or Debian**, run (as a normal user with sudo, or as root):

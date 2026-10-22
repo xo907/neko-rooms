@@ -1,0 +1,14 @@
+# Joins the docker network of Nginx Proxy Manager, so it can forward to
+# neko-rooms-local:8080 by name. Added by ./local/up.sh --npm when NPM runs on
+# its own network (the usual docker compose install).
+
+services:
+  neko-rooms:
+    networks:
+      - default
+      - npm
+
+networks:
+  npm:
+    external: true
+    name: "${NPM_NETWORK:?set NPM_NETWORK to the docker network of Nginx Proxy Manager}"
