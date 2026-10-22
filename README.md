@@ -28,7 +28,7 @@ Simple room management system for [n.eko](https://github.com/m1k1o/neko). Self h
 ./local/up.sh        # Windows: .\local\up.ps1
 ```
 
-Builds this checkout, starts it on `http://localhost:8080` and prints the tailnet URLs. See [docs/local.md](./docs/local.md).
+Builds this checkout, starts it on `http://localhost:8188` and prints the tailnet URLs. See [docs/local.md](./docs/local.md).
 
 ## Run on a Raspberry Pi
 

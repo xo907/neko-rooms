@@ -70,8 +70,19 @@ else
 fi
 grep -q '^TZ=' "$ENV_FILE" || echo "TZ=$(cat /etc/timezone 2>/dev/null || echo UTC)" >> "$ENV_FILE"
 
+# web UI port: keep the saved one, otherwise the first free one from 8188
+port_busy() {
+  if command -v ss >/dev/null 2>&1 && ss -Hltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$1\$"; then
+    return 0
+  fi
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
 port="$(sed -n 's/^NEKO_ROOMS_PORT=//p' "$ENV_FILE" | head -n1)"
-port="${port:-8080}"
+if [ -z "$port" ]; then
+  port=8188
+  while port_busy "$port"; do port=$((port + 1)); done
+  echo "NEKO_ROOMS_PORT=$port" >> "$ENV_FILE"
+fi
 
 if [ "$pi" = 1 ]; then
   # the Pi uses the published multi-arch image, building there takes ages
