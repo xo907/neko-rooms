@@ -48,7 +48,7 @@ class Api(private val http: OkHttpClient) {
     // links that open the room on the site, for sharing
     fun roomLink(room: String, invite: String? = null): String {
         val b = base ?: return ""
-        return b.toString() + "#/r/" + enc(room) + (if (invite != null) "?invite=" + enc(invite) else "")
+        return b.toString() + "r/" + enc(room) + (if (invite != null) "?invite=" + enc(invite) else "")
     }
 
     private suspend fun <T> call(request: Request, parse: (String) -> T): T = withContext(Dispatchers.IO) {

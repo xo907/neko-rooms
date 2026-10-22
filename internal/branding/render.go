@@ -48,13 +48,64 @@ func bootCSS(b Branding) string {
 	return sb.String()
 }
 
+// PageMeta is how a page looks when its link is shared (Open Graph).
+type PageMeta struct {
+	DocTitle    string // <title>, empty keeps the site's
+	Title       string
+	Description string
+	URL         string // absolute
+	Image       string // absolute
+	ImageAlt    string
+	SiteName    string
+	OEmbed      string // absolute url of an oEmbed document
+}
+
+func (p *PageMeta) head() string {
+	var sb strings.Builder
+	tag := func(attr, key, value string) {
+		if value != "" {
+			fmt.Fprintf(&sb, `<meta %s="%s" content="%s">`, attr, key, html.EscapeString(value))
+		}
+	}
+	tag("name", "description", p.Description)
+	tag("property", "og:type", "website")
+	tag("property", "og:site_name", p.SiteName)
+	tag("property", "og:title", p.Title)
+	tag("property", "og:description", p.Description)
+	tag("property", "og:url", p.URL)
+	if p.Image != "" {
+		tag("property", "og:image", p.Image)
+		tag("property", "og:image:type", "image/png")
+		tag("property", "og:image:width", "1200")
+		tag("property", "og:image:height", "630")
+		tag("property", "og:image:alt", p.ImageAlt)
+		tag("name", "twitter:card", "summary_large_image")
+		tag("name", "twitter:image", p.Image)
+	}
+	tag("name", "twitter:title", p.Title)
+	tag("name", "twitter:description", p.Description)
+	if p.OEmbed != "" {
+		fmt.Fprintf(&sb, `<link rel="alternate" type="application/json+oembed" href="%s" title="%s">`, html.EscapeString(p.OEmbed), html.EscapeString(p.Title))
+	}
+	return sb.String()
+}
+
 // RenderIndex injects branding into the client index.html.
 func (m *Manager) RenderIndex(raw []byte) []byte {
+	return m.RenderIndexWith(raw, nil)
+}
+
+// RenderIndexWith injects branding and the share preview of a page.
+func (m *Manager) RenderIndexWith(raw []byte, meta *PageMeta) []byte {
 	b := m.Get()
 	year := time.Now().Year()
 
 	out := raw
-	title := "<title>" + html.EscapeString(b.Expand(b.PageTitle, year)) + "</title>"
+	docTitle := b.Expand(b.PageTitle, year)
+	if meta != nil && meta.DocTitle != "" {
+		docTitle = meta.DocTitle
+	}
+	title := "<title>" + html.EscapeString(docTitle) + "</title>"
 	out = indexTitleRegex.ReplaceAllLiteral(out, []byte(title))
 
 	if b.Favicon != "" {
@@ -71,13 +122,17 @@ func (m *Manager) RenderIndex(raw []byte) []byte {
 	if b.ThemeColor != "" {
 		fmt.Fprintf(&head, `<meta name="theme-color" content="%s">`, html.EscapeString(b.ThemeColor))
 	}
-	if b.Description != "" {
-		fmt.Fprintf(&head, `<meta name="description" content="%s">`, html.EscapeString(b.Description))
-		fmt.Fprintf(&head, `<meta property="og:description" content="%s">`, html.EscapeString(b.Description))
-	}
-	fmt.Fprintf(&head, `<meta property="og:title" content="%s">`, html.EscapeString(b.Expand(b.PageTitle, year)))
-	if b.Logo != "" {
-		fmt.Fprintf(&head, `<meta property="og:image" content="%s">`, html.EscapeString(b.Logo))
+	if meta != nil {
+		head.WriteString(meta.head())
+	} else {
+		if b.Description != "" {
+			fmt.Fprintf(&head, `<meta name="description" content="%s">`, html.EscapeString(b.Description))
+			fmt.Fprintf(&head, `<meta property="og:description" content="%s">`, html.EscapeString(b.Description))
+		}
+		fmt.Fprintf(&head, `<meta property="og:title" content="%s">`, html.EscapeString(b.Expand(b.PageTitle, year)))
+		if b.Logo != "" {
+			fmt.Fprintf(&head, `<meta property="og:image" content="%s">`, html.EscapeString(b.Logo))
+		}
 	}
 	if b.Theme.FontURL != "" {
 		fmt.Fprintf(&head, `<link rel="stylesheet" href="%s">`, html.EscapeString(b.Theme.FontURL))

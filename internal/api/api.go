@@ -8,6 +8,7 @@ import (
 	"github.com/m1k1o/neko-rooms/internal/auth"
 	"github.com/m1k1o/neko-rooms/internal/branding"
 	"github.com/m1k1o/neko-rooms/internal/community"
+	"github.com/m1k1o/neko-rooms/internal/og"
 	"github.com/m1k1o/neko-rooms/internal/store"
 	"github.com/m1k1o/neko-rooms/internal/types"
 )
@@ -20,11 +21,21 @@ type ApiManagerCtx struct {
 	branding  *branding.Manager
 	community *community.Service
 	store     *store.Store
+
+	og      *og.Renderer // nil when the fonts did not load, link previews are off
+	ogCache ogCache
 }
 
 func New(rooms types.RoomManager, pull types.PullManager, authManager *auth.Manager, brandingManager *branding.Manager, communityService *community.Service) *ApiManagerCtx {
+	logger := log.With().Str("module", "api").Logger()
+	renderer, err := og.New()
+	if err != nil {
+		logger.Err(err).Msg("unable to load fonts, link preview images are disabled")
+	}
+
 	return &ApiManagerCtx{
-		logger:    log.With().Str("module", "api").Logger(),
+		logger:    logger,
+		og:        renderer,
 		rooms:     rooms,
 		pull:      pull,
 		auth:      authManager,
@@ -57,6 +68,10 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 		r.Post("/{roomName}/join", manager.publicRoomJoin)
 		r.Get("/{roomName}/thumbnail.jpg", manager.publicRoomThumbnail)
 	})
+
+	r.Get("/public/og/site.png", manager.ogSiteImage)
+	r.Get("/public/og/rooms/{roomName}", manager.ogRoomImage)
+	r.Get("/public/og/oembed.json", manager.ogOEmbed)
 
 	r.Get("/public/avatars", manager.publicAvatarsLookup)
 	r.Get("/public/avatars/{userId}", manager.publicAvatar)
