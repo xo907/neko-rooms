@@ -180,7 +180,6 @@ func (manager *ApiManagerCtx) roomCard(r *http.Request, room *community.Room, in
 		Description: room.Description,
 		Category:    room.Category,
 		Live:        room.Ready,
-		Viewers:     room.Viewers,
 		NowPlaying:  room.NowPlaying,
 		Sleeping:    room.Sleeping,
 		StartsIn:    startsIn,

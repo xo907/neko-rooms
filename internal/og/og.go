@@ -88,7 +88,6 @@ type Room struct {
 	Description string
 	Category    string
 	Live        bool
-	Viewers     int
 	Thumbnail   image.Image // optional
 	OwnerName   string      // optional
 	OwnerAvatar image.Image // optional
@@ -188,19 +187,14 @@ func (r *Renderer) RoomCard(c Room) ([]byte, error) {
 	if c.Category != "" {
 		x += pill(img, r.face(r.bold, 22), x, pillTop, 42, c.Category, tint(c.Accent), mix(bg, c.Accent, 0.18)) + 12
 	}
-	if c.Live {
-		label := "Live"
-		if c.Viewers == 1 {
-			label = "Live · 1 watching"
-		} else if c.Viewers > 1 {
-			label = "Live · " + strconv.Itoa(c.Viewers) + " watching"
-		}
-		livePill(img, r.face(r.bold, 22), x, pillTop, 42, label, bg)
-	} else if c.StartsIn != "" {
+	// running rooms get no status tag
+	switch {
+	case c.Live:
+	case c.StartsIn != "":
 		pill(img, r.face(r.bold, 22), x, pillTop, 42, "Watch party "+c.StartsIn, tint(c.Accent), mix(bg, c.Accent, 0.18))
-	} else if c.Sleeping {
+	case c.Sleeping:
 		pill(img, r.face(r.sans, 22), x, pillTop, 42, "Sleeping · join to wake it", soft, glass(bg, 0.07))
-	} else {
+	default:
 		pill(img, r.face(r.sans, 22), x, pillTop, 42, "Offline", muted, glass(bg, 0.07))
 	}
 
