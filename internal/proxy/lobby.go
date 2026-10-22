@@ -110,7 +110,7 @@ func lobbyBody(icon, title, message, actions string) template.HTML {
 }
 
 const (
-	iconError   = `<div class="swal2-icon swal2-error"><div class="swal2-icon-content">X</div></div>`
+	iconError   = `<div class="swal2-icon swal2-error"><div class="swal2-icon-content">&times;</div></div>`
 	iconWarning = `<div class="swal2-icon swal2-warning"><div class="swal2-icon-content">!</div></div>`
 	iconInfo    = `<div class="swal2-icon swal2-info"><div class="swal2-icon-content">i</div></div>`
 

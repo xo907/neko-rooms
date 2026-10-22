@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -78,6 +79,9 @@ func (p *ProxyManagerCtx) injectBranding(res *http.Response, roomName string) er
 	res.ContentLength = int64(len(body))
 	res.Header.Set("Content-Length", strconv.Itoa(len(body)))
 	res.Header.Del("ETag")
+	// branding changes must show up right away
+	res.Header.Del("Last-Modified")
+	res.Header.Set("Cache-Control", "no-cache")
 	return nil
 }
 
@@ -91,25 +95,21 @@ func (p *ProxyManagerCtx) roomTitle(name string) string {
 	return name
 }
 
-// roomThemeCSS maps the site's dark palette onto the neko client, which
-// only has a dark theme. Selectors follow the neko client components.
-func roomThemeCSS(pal branding.Palette, radius int) string {
+//go:embed room.css
+var roomCSS string
+
+// roomThemeCSS maps the site's dark palette and font onto the neko client,
+// which only has a dark theme. The skin itself lives in room.css.
+func roomThemeCSS(t branding.Theme) string {
+	p := t.Dark
+	font := t.FontFamily
+	if font == "" {
+		font = "inherit"
+	}
 	return fmt.Sprintf(`
-html, body, #neko .neko-main .header-container, #neko .neko-main .room-container { background: %[1]s !important; }
-#neko { accent-color: %[3]s; }
-#neko .neko-menu { background-color: %[2]s !important; }
-#neko .neko-menu .tabs-container { background: %[1]s !important; }
-#neko .neko-menu .tabs-container ul li { background: %[4]s !important; }
-#neko .neko-menu .tabs-container ul li.active { background: %[2]s !important; }
-.connect .window { background: %[2]s !important; border-radius: %[5]dpx !important; }
-.connect .window .message input { background: %[1]s !important; }
-.connect .window .message button { background: %[3]s !important; }
-.connect .window .message button.oauth-login { background: %[1]s !important; border-color: %[3]s !important; }
-.connect .window .loader .bounce1, .connect .window .loader .bounce2 { background-color: %[3]s !important; }
-.volume input[type='range']::-webkit-slider-runnable-track { background: %[3]s !important; }
-.volume input[type='range']::-moz-range-track { background: %[3]s !important; }
-.switch input[type='checkbox']:checked + span { background-color: %[3]s !important; }
-`, pal.Background, pal.Surface, pal.Primary, pal.Secondary, radius)
+:root { --nr-bg: %s; --nr-surface: %s; --nr-primary: %s; --nr-text: %s; --nr-radius: %dpx; --nr-font: %s; }
+html, body { background: %s !important; }
+`, p.Background, p.Surface, p.Primary, p.Text, t.BorderRadius, font, p.Background) + roomCSS
 }
 
 // logoScript swaps the n.eko logo and name for the site's, also when the
@@ -132,6 +132,46 @@ const logoScript = `(function () {
   }
   new MutationObserver(apply).observe(document.documentElement, { childList: true, subtree: true });
   apply();
+})();`
+
+// avatarScript gives room members the avatar of the site account with the
+// same name, by setting it on the members in the neko client store.
+const avatarScript = `(function () {
+  var API = %s, cache = {}, pending = {};
+  function root() { var el = document.getElementById('neko'); return el && el.__vue__; }
+  function apply() {
+    var vm = root(), st = vm && vm.$store && vm.$store.state.user;
+    if (!st || !st.members) return;
+    var missing = [];
+    Object.keys(st.members).forEach(function (id) {
+      var m = st.members[id], name = m && m.displayname;
+      if (!name) return;
+      if (!(name in cache)) { if (!pending[name]) missing.push(name); return; }
+      if (cache[name] && m.avatar !== cache[name]) vm.$set(m, 'avatar', cache[name]);
+    });
+    if (missing.length) lookup(missing);
+  }
+  function lookup(names) {
+    names.forEach(function (n) { pending[n] = true; });
+    var q = names.map(function (n) { return 'name=' + encodeURIComponent(n); }).join('&');
+    fetch(API + 'public/avatars?' + q, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (res) {
+        names.forEach(function (n) {
+          cache[n] = res[n] ? new URL(API + res[n], location.href).href : '';
+          delete pending[n];
+        });
+        apply();
+      })
+      .catch(function () { names.forEach(function (n) { delete pending[n]; }); });
+  }
+  var timer = setInterval(function () {
+    var vm = root();
+    if (!vm || !vm.$store) return;
+    clearInterval(timer);
+    vm.$store.watch(function (s) { return s.user && s.user.members; }, apply, { deep: true });
+    apply();
+  }, 500);
 })();`
 
 func (p *ProxyManagerCtx) injectHTML(body []byte, roomTitle string) []byte {
@@ -164,7 +204,10 @@ func (p *ProxyManagerCtx) injectHTML(body []byte, roomTitle string) []byte {
 
 	css := ""
 	if rb.SiteColors {
-		css += roomThemeCSS(b.Theme.Dark, b.Theme.BorderRadius)
+		if b.Theme.FontURL != "" {
+			fmt.Fprintf(&head, `<link rel="stylesheet" href="%s">`, html.EscapeString(b.Theme.FontURL))
+		}
+		css += roomThemeCSS(b.Theme)
 	}
 	css += rb.CustomCSS
 	if css != "" {
@@ -192,6 +235,13 @@ func (p *ProxyManagerCtx) injectHTML(body []byte, roomTitle string) []byte {
 		})
 		scripts.WriteString("<script>")
 		fmt.Fprintf(&scripts, logoScript, data)
+		scripts.WriteString("</script>")
+	}
+	if p.auth != nil {
+		// json.Marshal escapes <, > and &, safe inside a script tag
+		api, _ := json.Marshal(p.loginURL + "api/")
+		scripts.WriteString("<script>")
+		fmt.Fprintf(&scripts, avatarScript, api)
 		scripts.WriteString("</script>")
 	}
 	if rb.CustomJS != "" {

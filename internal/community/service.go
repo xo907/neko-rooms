@@ -174,15 +174,16 @@ type Room struct {
 	CanManage bool `json:"can_manage"`
 	CanJoin   bool `json:"can_join"`
 
-	Running        bool      `json:"running"`
-	Ready          bool      `json:"ready"`
-	Paused         bool      `json:"paused"`
-	Viewers        int       `json:"viewers"`
-	Members        []string  `json:"members"`
-	FriendsInside  []string  `json:"friends_inside"`
-	MaxConnections uint16    `json:"max_connections"`
-	HasThumbnail   bool      `json:"has_thumbnail"`
-	CreatedAt      time.Time `json:"created_at"`
+	Running        bool              `json:"running"`
+	Ready          bool              `json:"ready"`
+	Paused         bool              `json:"paused"`
+	Viewers        int               `json:"viewers"`
+	Members        []string          `json:"members"`
+	FriendsInside  []string          `json:"friends_inside"`
+	Avatars        map[string]string `json:"avatars"` // member name -> avatar url, relative to the api root
+	MaxConnections uint16            `json:"max_connections"`
+	HasThumbnail   bool              `json:"has_thumbnail"`
+	CreatedAt      time.Time         `json:"created_at"`
 
 	InviteCode string `json:"invite_code,omitempty"` // only for managers
 }
@@ -193,6 +194,7 @@ type viewer struct {
 	usernames map[string]bool // friend usernames & display names, for presence
 	policy    auth.Policy
 	users     map[int64]*store.User
+	avatars   map[string]*store.User // lowercase username & display name -> user with an avatar
 }
 
 func (s *Service) newViewer(u *store.User) (*viewer, error) {
@@ -202,6 +204,7 @@ func (s *Service) newViewer(u *store.User) (*viewer, error) {
 		usernames: map[string]bool{},
 		policy:    s.auth.Policy(),
 		users:     map[int64]*store.User{},
+		avatars:   map[string]*store.User{},
 	}
 
 	users, err := s.store.ListUsers()
@@ -210,6 +213,15 @@ func (s *Service) newViewer(u *store.User) (*viewer, error) {
 	}
 	for _, x := range users {
 		v.users[x.ID] = x
+		if x.Avatar > 0 && !x.Disabled && x.DisplayName != "" {
+			v.avatars[strings.ToLower(x.DisplayName)] = x
+		}
+	}
+	// usernames win over display names
+	for _, x := range users {
+		if x.Avatar > 0 && !x.Disabled {
+			v.avatars[strings.ToLower(x.Username)] = x
+		}
 	}
 
 	if u != nil && v.policy.FriendsEnabled {
@@ -296,6 +308,7 @@ func (s *Service) toRoom(v *viewer, e types.RoomEntry, meta *store.RoomMeta) Roo
 		MaxConnections: e.MaxConnections,
 		Members:        []string{},
 		FriendsInside:  []string{},
+		Avatars:        map[string]string{},
 		CreatedAt:      e.Created,
 	}
 
@@ -333,6 +346,11 @@ func (s *Service) toRoom(v *viewer, e types.RoomEntry, meta *store.RoomMeta) Roo
 		for _, m := range st.members {
 			if v.usernames[strings.ToLower(m)] {
 				r.FriendsInside = append(r.FriendsInside, m)
+			}
+		}
+		for _, m := range append(r.Members, r.FriendsInside...) {
+			if u, ok := v.avatars[strings.ToLower(m)]; ok {
+				r.Avatars[m] = u.Public().AvatarPath()
 			}
 		}
 		r.HasThumbnail = v.policy.ThumbnailsEnabled

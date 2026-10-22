@@ -9,276 +9,203 @@
 {{if .FontURL}}<link rel="stylesheet" href="{{.FontURL}}">{{end}}
 
 <style>
+:root {
+  --bg: {{.BackgroundColor}};
+  --popup: {{.PopupColor}};
+  --text: {{.TextColor}};
+  --accent: {{.ButtonColor}};
+  --line: color-mix(in srgb, var(--text) 9%, transparent);
+  --muted: color-mix(in srgb, var(--text) 58%, var(--bg));
+}
+* { box-sizing: border-box; }
 body {
+  margin: 0;
   font-family: {{.FontFamily}};
-  background-color: {{.BackgroundColor}};
+  color: var(--text);
+  background-color: var(--bg);
   {{if .BackgroundImage}}background-image: url("{{.BackgroundImage}}");
   background-size: cover;
-  background-position: center;{{end}}
+  background-position: center;{{else}}background-image:
+    radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+    radial-gradient(40% 40% at 85% 100%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%);{{end}}
   display: flex;
   position: fixed;
-  z-index: 1060;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  flex-direction: row;
+  inset: 0;
   align-items: center;
   justify-content: center;
-  padding: 0.625em;
+  padding: 16px;
   overflow-x: hidden;
-  transition: background-color 0.1s;
-  -webkit-overflow-scrolling: touch;
+  -webkit-font-smoothing: antialiased;
+}
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .04;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 .swal2-popup {
   display: flex;
   position: relative;
-  box-sizing: border-box;
+  z-index: 1;
   flex-direction: column;
   justify-content: center;
-  width: 32em;
+  width: 26em;
   max-width: 100%;
-  padding: 1.25em;
-  border: none;
-  border-radius: 0.3125em;
-  background: {{.PopupColor}};
-  font-family: inherit;
-  font-size: 1rem;
+  padding: 2.25em 2em 2em;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--popup) 82%, transparent);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, .8), inset 0 1px 0 rgba(255, 255, 255, .04);
+  font-size: 15px;
+  animation: rise .6s cubic-bezier(.2, .8, .2, 1) both;
 }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 .swal2-header {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 1.8em;
 }
 .swal2-icon {
   display: flex;
   position: relative;
   box-sizing: content-box;
   justify-content: center;
-  width: 5em;
-  height: 5em;
-  margin: 1.25em auto 1.875em;
-  border: 0.25em solid transparent;
+  align-items: center;
+  width: 3.25em;
+  height: 3.25em;
+  margin: 0 auto 1.25em;
+  border: 1px solid var(--line);
   border-radius: 50%;
-  border-color: #000;
+  background: color-mix(in srgb, currentColor 10%, transparent);
   font-family: inherit;
-  line-height: 5em;
   cursor: default;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
   user-select: none;
 }
-.swal2-icon.swal2-error {
-  border-color: #f27474;
-  color: #f27474;
-}
-.swal2-icon.swal2-warning {
-  border-color: #facea8;
-  color: #f8bb86;
-}
-.swal2-icon.swal2-info {
-  border-color: #9de0f6;
-  color: #3fc3ee;
-}
-.swal2-icon.swal2-question {
-  border-color: #c9dae1;
-  color: #87adbd;
-}
-.swal2-icon.swal2-success {
-  border-color: #a5dc86;
-  color: #a5dc86;
-}
+.swal2-icon.swal2-error { color: #f87171; }
+.swal2-icon.swal2-warning { color: #fbbf24; }
+.swal2-icon.swal2-info { color: var(--accent); }
+.swal2-icon.swal2-question { color: var(--muted); }
 .swal2-icon .swal2-icon-content {
   display: flex;
   align-items: center;
-  font-size: 3.75em;
+  font-size: 1.35em;
+  font-weight: 600;
 }
 
-.swal2-icon.swal2-success [class^=swal2-success-circular-line] {
-  position: absolute;
-  width: 3.75em;
-  height: 7.5em;
-  transform: rotate(45deg);
-  border-radius: 50%;
-}
-.swal2-icon.swal2-success [class^=swal2-success-circular-line][class$=left] {
-  top: -0.4375em;
-  left: -2.0635em;
-  transform: rotate(-45deg);
-  transform-origin: 3.75em 3.75em;
-  border-radius: 7.5em 0 0 7.5em;
-}
-.swal2-icon.swal2-success [class^=swal2-success-circular-line][class$=right] {
-  top: -0.6875em;
-  left: 1.875em;
-  transform: rotate(-45deg);
-  transform-origin: 0 3.75em;
-  border-radius: 0 7.5em 7.5em 0;
-}
-.swal2-icon.swal2-success .swal2-success-ring {
-  position: absolute;
-  z-index: 2;
-  top: -0.25em;
-  left: -0.25em;
-  box-sizing: content-box;
-  width: 100%;
-  height: 100%;
-  border: 0.25em solid rgba(165, 220, 134, 0.3);
-  border-radius: 50%;
-}
-.swal2-icon.swal2-success .swal2-success-fix {
-  position: absolute;
-  z-index: 1;
-  top: 0.5em;
-  left: 1.625em;
-  width: 0.4375em;
-  height: 5.625em;
-  transform: rotate(-45deg);
-}
+/* success: a calm check mark instead of the animated sweetalert one */
+.swal2-icon.swal2-success { color: #4ade80; }
+.swal2-icon.swal2-success [class^=swal2-success-circular-line],
+.swal2-icon.swal2-success .swal2-success-fix,
+.swal2-icon.swal2-success .swal2-success-ring { display: none; }
 .swal2-icon.swal2-success [class^=swal2-success-line] {
   display: block;
   position: absolute;
-  z-index: 2;
-  height: 0.3125em;
-  border-radius: 0.125em;
-  background-color: #a5dc86;
+  height: 2px;
+  border-radius: 2px;
+  background-color: currentColor;
 }
 .swal2-icon.swal2-success [class^=swal2-success-line][class$=tip] {
-  top: 2.875em;
-  left: 0.8125em;
-  width: 1.5625em;
+  top: 1.85em;
+  left: .95em;
+  width: .7em;
   transform: rotate(45deg);
 }
 .swal2-icon.swal2-success [class^=swal2-success-line][class$=long] {
-  top: 2.375em;
-  right: 0.5em;
-  width: 2.9375em;
+  top: 1.6em;
+  right: .8em;
+  width: 1.3em;
   transform: rotate(-45deg);
 }
 .swal2-title {
-  display: flex;
-  position: relative;
-  max-width: 100%;
-  margin: 0 0 0.4em;
+  margin: 0 0 .5em;
   padding: 0;
-  color: {{.TextColor}};
-  font-size: 1.875em;
+  color: var(--text);
+  font-size: 1.45em;
   font-weight: 600;
+  letter-spacing: -0.02em;
   text-align: center;
-  text-transform: none;
   word-wrap: break-word;
 }
 .swal2-content {
-  z-index: 1;
-  justify-content: center;
   margin: 0;
-  padding: 0 1.6em;
-  color: {{.TextColor}};
-  font-size: 1.125em;
-  font-weight: normal;
-  line-height: normal;
+  color: var(--muted);
+  font-size: 1em;
+  line-height: 1.6;
   text-align: center;
   word-wrap: break-word;
 }
+.swal2-content small { font-size: .85em; }
 .swal2-actions {
   display: flex;
   flex-direction: column;
-  z-index: 1;
-  box-sizing: border-box;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   width: 100%;
-  margin: 1.25em auto 0;
-  padding: 0 1.6em;
+  margin: 1.5em auto 0;
 }
+.swal2-content.swal2-actions { margin-top: 1em; }
 .swal2-loader {
+  width: 1.6em;
+  height: 1.6em;
+  margin: 0 auto;
+  animation: swal2-rotate-loading 1s linear infinite;
+  border: 2px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 100%;
+}
+@keyframes swal2-rotate-loading { to { transform: rotate(360deg); } }
+.swal2-styled {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.2em;
-  height: 2.2em;
-  margin: 0 1.875em;
-  -webkit-animation: swal2-rotate-loading 1.5s linear 0s infinite normal;
-  animation: swal2-rotate-loading 1.5s linear 0s infinite normal;
-  border-width: 0.25em;
-  border-style: solid;
-  border-radius: 100%;
-  border-color: {{.ButtonColor}} transparent {{.ButtonColor}} transparent;
-}
-@-webkit-keyframes swal2-rotate-loading {
-  0% {
-  transform: rotate(0deg);
-  }
-  100% {
-  transform: rotate(360deg);
-  }
-}
-@keyframes swal2-rotate-loading {
-  0% {
-  transform: rotate(0deg);
-  }
-  100% {
-  transform: rotate(360deg);
-  }
-}
-.swal2-styled {
-  display: inline-block;
-  margin: 0.3125em;
-  padding: 0.625em 1.1em;
-  box-shadow: none;
-  font-weight: 500;
+  height: 40px;
+  margin: .25em;
+  padding: 0 1.4em;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: .95em;
+  letter-spacing: -0.01em;
   cursor: pointer;
+  transition: box-shadow .18s, transform .18s;
 }
-.swal2-styled:focus {
-  outline: none;
-  box-shadow: 0 0 0 1px {{.PopupColor}}, 0 0 0 3px transparent;
-}
+.swal2-styled:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.swal2-styled:active { transform: scale(.97); }
 .swal2-styled.swal2-confirm {
   border: 0;
-  border-radius: 0.25em;
-  background: initial;
-  background-color: {{.ButtonColor}};
-  color: #fff;
-  font-size: 1.0625em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: color-mix(in srgb, var(--accent) 12%, #000);
 }
-.swal2-actions:not(.swal2-loading) .swal2-styled:hover {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1));
-}
-.swal2-actions:not(.swal2-loading) .swal2-styled:active {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2));
+.swal2-styled.swal2-confirm:hover {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent), 0 8px 24px -8px var(--accent);
 }
 .swal2-styled.swal2-cancel {
-  border: 0;
-  border-radius: 0.25em;
-  background: initial;
-  background-color: #18191c;
-  color: #fff;
-  font-size: 1.0625em;
-}
-.swal2-actions:not(.swal2-loading) .swal2-styled:hover {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1));
-}
-.swal2-actions:not(.swal2-loading) .swal2-styled:active {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
 }
 .lobby-logo {
   display: block;
-  max-width: 60%;
-  max-height: 64px;
-  margin: 0 auto 0.5em;
+  max-width: 50%;
+  max-height: 44px;
+  margin: 0 auto 1.25em;
 }
-.powered-by{
+.powered-by {
   position: absolute;
-  color: {{.TextColor}};
-  bottom: -5px;
-  transform: translate(-50%, 100%);
   left: 50%;
+  bottom: -14px;
+  transform: translate(-50%, 100%);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
-.powered-by a{
-  color: {{.TextColor}};
-}
+.powered-by a { color: var(--muted); }
+.powered-by a:hover { color: var(--text); }
 </style>
 {{if .CustomCSS}}<style>{{.CustomCSS}}</style>{{end}}
 
@@ -291,7 +218,7 @@ body {
   <div class="swal2-popup">
     {{if .Logo}}<img class="lobby-logo" src="{{.Logo}}" alt="{{.AppName}}">{{end}}
     {{.Body}}
-    {{if .PoweredBy}}<small class="powered-by">Powered by: <a href="https://github.com/m1k1o/neko-rooms">neko-rooms</a></small>{{end}}
+    {{if .PoweredBy}}<small class="powered-by">Powered by <a href="https://github.com/m1k1o/neko-rooms">neko-rooms</a></small>{{end}}
   </div>
 
 </body>

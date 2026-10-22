@@ -96,6 +96,15 @@ var migrations = []string{
 	);
 	CREATE INDEX friendships_friend ON friendships(friend_id);
 	`,
+	// 3: user avatars
+	`
+	CREATE TABLE avatars (
+		user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		mime       TEXT NOT NULL,
+		data       BLOB NOT NULL,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	`,
 }
 
 type Store struct {

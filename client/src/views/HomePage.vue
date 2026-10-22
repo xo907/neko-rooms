@@ -1,178 +1,291 @@
 <template>
-  <div>
+  <div class="nr-home">
     <!-- hero -->
-    <section v-if="showHero" class="nr-hero" :style="heroStyle">
-      <v-container class="py-12 py-md-16 position-relative">
-        <v-row align="center">
-          <v-col cols="12" md="7">
-            <h1 class="nr-hero-title nr-heading mb-4">{{ expand(home.hero_title) }}</h1>
-            <p class="nr-hero-subtitle mb-8">{{ expand(home.hero_subtitle) }}</p>
-            <div class="d-flex flex-wrap" style="gap: 12px">
-              <v-btn x-large color="white" class="primary--text font-weight-bold" depressed @click="create">
-                <v-icon left>mdi-plus-circle</v-icon>{{ home.cta_label || 'Create a room' }}
-              </v-btn>
-              <v-btn x-large outlined color="white" @click="scrollToRooms">
-                <v-icon left>mdi-compass-outline</v-icon>Browse rooms
-              </v-btn>
-            </div>
-          </v-col>
-          <v-col cols="12" md="5" class="d-none d-md-flex justify-center">
-            <div class="nr-hero-stats">
-              <div class="nr-hero-stat">
-                <div class="nr-hero-stat-value">{{ liveRooms.length }}</div>
-                <div class="nr-hero-stat-label">live rooms</div>
-              </div>
-              <div class="nr-hero-stat">
-                <div class="nr-hero-stat-value">{{ totalViewers }}</div>
-                <div class="nr-hero-stat-label">people watching</div>
-              </div>
-            </div>
-          </v-col>
-        </v-row>
-      </v-container>
+    <section v-if="showHero" class="nr-hero">
+      <div v-if="home.hero_image" class="nr-hero-image" :style="heroImageStyle" />
+      <div class="nr-hero-inner nr-rise">
+        <div class="nr-eyebrow mb-6">
+          <span class="nr-dot" />
+          <span>{{ liveRooms.length }} live {{ liveRooms.length === 1 ? 'room' : 'rooms' }}</span>
+          <span class="nr-eyebrow-sep" />
+          <span>{{ totalViewers }} watching</span>
+        </div>
+        <h1 class="nr-hero-title nr-display">{{ expand(home.hero_title) }}</h1>
+        <p class="nr-hero-subtitle">{{ expand(home.hero_subtitle) }}</p>
+        <div class="nr-hero-actions">
+          <v-btn large color="primary" depressed @click="create">
+            {{ home.cta_label || 'Create a room' }}
+          </v-btn>
+          <v-btn large outlined @click="scrollToRooms">
+            Browse rooms
+          </v-btn>
+        </div>
+      </div>
     </section>
 
-    <v-container ref="rooms" class="py-6" :class="{ 'pt-8': !showHero }">
-      <v-row>
-        <v-col cols="12" :md="showFriends ? 9 : 12">
-          <!-- toolbar -->
-          <div class="d-flex flex-wrap align-center mb-4" style="gap: 12px">
-            <h2 v-if="!showHero" class="nr-page-title nr-heading mr-4">{{ branding.tagline || 'Rooms' }}</h2>
-            <v-text-field
-              v-if="home.show_search"
-              v-model="search"
-              dense
-              solo
-              flat
-              hide-details
-              clearable
-              prepend-inner-icon="mdi-magnify"
-              placeholder="Search rooms, people, categories"
-              class="nr-search"
-            />
-            <v-spacer />
-            <v-btn v-if="user && canCreate" color="primary" depressed @click="create">
-              <v-icon left>mdi-plus</v-icon>New room
-            </v-btn>
+    <div ref="rooms" class="nr-wrap" :class="showHero ? 'pt-2' : 'pt-10'">
+      <div class="nr-layout">
+        <div class="nr-main">
+          <!-- page heading for signed in users -->
+          <div v-if="!showHero" class="nr-page-head nr-rise">
+            <h1 class="nr-page-title nr-heading">{{ branding.tagline || 'Rooms' }}</h1>
+            <div class="nr-page-meta">
+              <span class="nr-dot" />{{ liveRooms.length }} live · {{ totalViewers }} watching
+            </div>
           </div>
 
-          <div v-if="home.show_categories && categories.length" class="mb-6">
-            <v-chip-group v-model="category" column active-class="primary white--text">
-              <v-chip v-for="c in categories" :key="c" :value="c" small filter outlined>{{ c }}</v-chip>
-            </v-chip-group>
+          <!-- toolbar -->
+          <div class="nr-toolbar">
+            <div class="nr-filters" v-if="home.show_categories && categories.length">
+              <button type="button" class="nr-filter" :class="{ 'is-active': !category }" @click="category = null">All</button>
+              <button
+                v-for="c in categories"
+                :key="c"
+                type="button"
+                class="nr-filter"
+                :class="{ 'is-active': category === c }"
+                @click="category = category === c ? null : c"
+              >{{ c }}</button>
+            </div>
+            <div class="nr-toolbar-end">
+              <label v-if="home.show_search" class="nr-search">
+                <v-icon small>mdi-magnify</v-icon>
+                <input v-model="search" type="search" placeholder="Search rooms, people…" aria-label="Search rooms">
+              </label>
+              <v-btn v-if="user && canCreate" color="primary" depressed @click="create">
+                <v-icon left small>mdi-plus</v-icon>New room
+              </v-btn>
+            </div>
           </div>
 
           <div v-if="!loaded" class="text-center py-16">
-            <v-progress-circular indeterminate color="primary" size="48" />
+            <v-progress-circular indeterminate color="primary" size="32" width="2" />
           </div>
 
           <template v-else>
-            <section v-for="section in sections" :key="section.key" class="mb-8">
-              <div class="d-flex align-center mb-3">
-                <v-icon class="mr-2" :color="section.color">{{ section.icon }}</v-icon>
-                <h3 class="text-h6 font-weight-bold nr-heading">{{ section.label }}</h3>
-                <span class="ml-2 text--secondary">{{ section.rooms.length }}</span>
-              </div>
-              <v-row dense>
-                <v-col
+            <section v-for="section in sections" :key="section.key" class="mb-10">
+              <h2 class="nr-section-title">{{ section.label }} <span>{{ section.rooms.length }}</span></h2>
+              <div class="nr-grid" :class="{ 'nr-grid--compact': home.card_style === 'compact' }">
+                <RoomCard
                   v-for="room in section.rooms"
                   :key="section.key + room.id"
-                  cols="12"
-                  sm="6"
-                  :md="showFriends ? 6 : 4"
-                  :lg="home.card_style === 'compact' ? 3 : (showFriends ? 4 : 3)"
-                >
-                  <RoomCard :room="room" :tick="tick" :compact="home.card_style === 'compact'" @join="join" />
-                </v-col>
-              </v-row>
+                  :room="room"
+                  :tick="tick"
+                  :compact="home.card_style === 'compact'"
+                  @join="join"
+                />
+              </div>
             </section>
 
-            <v-card v-if="!sections.length" flat class="text-center pa-12 nr-empty">
-              <v-icon size="64" color="primary" class="mb-4">mdi-sofa-outline</v-icon>
-              <div class="text-h6 mb-2">{{ search || category ? 'No rooms match your search.' : (home.empty_text || 'No rooms yet.') }}</div>
-              <v-btn v-if="!search && !category" color="primary" depressed class="mt-4" @click="create">
-                <v-icon left>mdi-plus</v-icon>{{ home.cta_label || 'Create a room' }}
+            <div v-if="!sections.length" class="nr-empty">
+              <div class="nr-empty-icon"><v-icon>mdi-sofa-outline</v-icon></div>
+              <div class="nr-empty-title">{{ search || category ? 'No rooms match your search.' : (home.empty_text || 'No rooms yet.') }}</div>
+              <v-btn v-if="!search && !category" color="primary" depressed class="mt-5" @click="create">
+                {{ home.cta_label || 'Create a room' }}
               </v-btn>
-            </v-card>
+              <v-btn v-else text class="mt-3" @click="search = ''; category = null">Clear filters</v-btn>
+            </div>
           </template>
-        </v-col>
+        </div>
 
-        <v-col v-if="showFriends" cols="12" md="3">
-          <div class="nr-sticky">
-            <FriendsPanel :rooms="rooms" @join="join" @open="openRoom" />
-          </div>
-        </v-col>
-      </v-row>
-    </v-container>
+      </div>
+    </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
 .nr-hero {
   position: relative;
-  color: white;
+  padding: clamp(64px, 12vh, 128px) 16px clamp(48px, 8vh, 88px);
+  text-align: center;
   overflow: hidden;
+}
+.nr-hero-image {
+  position: absolute;
+  inset: 0;
   background-size: cover;
   background-position: center;
+  opacity: .28;
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 30%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 30%, #000 30%, transparent 75%);
 }
-.nr-hero::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 80px;
-  background: linear-gradient(180deg, transparent, var(--nr-bg));
-  pointer-events: none;
+.nr-hero-inner {
+  position: relative;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.nr-eyebrow-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--nr-line-strong);
 }
 .nr-hero-title {
-  font-size: clamp(2.2rem, 5vw, 3.6rem);
-  line-height: 1.05;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: clamp(2.8rem, 7.5vw, 5.2rem);
+  line-height: .98;
+  margin: 0 0 20px;
+  color: var(--nr-text);
 }
 .nr-hero-subtitle {
-  font-size: 1.2rem;
-  opacity: .92;
-  max-width: 560px;
+  font-size: clamp(1rem, 1.6vw, 1.125rem);
+  line-height: 1.6;
+  color: var(--nr-muted);
+  max-width: 520px;
+  margin: 0 auto 32px;
 }
-.nr-hero-stats {
+.nr-hero-actions {
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
 }
-.nr-hero-stat {
-  background: rgba(255, 255, 255, .14);
-  backdrop-filter: blur(8px);
-  border-radius: calc(var(--nr-radius) * 1.5);
-  padding: 22px 28px;
-  text-align: center;
-  min-width: 150px;
+
+.nr-wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 16px 64px;
 }
-.nr-hero-stat-value {
-  font-size: 2.6rem;
-  font-weight: 800;
-  line-height: 1;
+.nr-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
 }
-.nr-hero-stat-label {
-  opacity: .85;
-  margin-top: 6px;
+
+.nr-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 24px;
+  margin-bottom: 24px;
+}
+.nr-page-title {
+  font-size: clamp(1.8rem, 3.5vw, 2.4rem);
+  line-height: 1.1;
+  margin: 0;
+}
+.nr-page-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--nr-muted);
+}
+
+.nr-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--nr-line);
+}
+.nr-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.nr-filter {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--nr-line);
+  background: var(--nr-hover);
+  color: var(--nr-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color .18s, background-color .18s, border-color .18s, transform .18s;
+  &:hover { color: var(--nr-text); border-color: var(--nr-line-strong); }
+  &:active { transform: scale(.97); }
+  &.is-active {
+    background: var(--nr-primary);
+    border-color: var(--nr-primary);
+    color: var(--nr-on-primary);
+  }
+}
+.nr-toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
 }
 .nr-search {
-  max-width: 420px;
-  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  width: min(300px, 60vw);
+  min-width: 0;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--nr-line);
+  background: var(--nr-hover);
+  transition: border-color .18s, box-shadow .18s;
+  cursor: text;
+  .v-icon { color: var(--nr-subtle) !important; }
+  input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--nr-text);
+    font: inherit;
+    font-size: 13.5px;
+    &::placeholder { color: var(--nr-subtle); }
+    &::-webkit-search-cancel-button { filter: grayscale(1); opacity: .5; }
+  }
+  &:focus-within {
+    border-color: color-mix(in srgb, var(--nr-primary) 55%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--nr-primary) 12%, transparent);
+  }
 }
-.nr-sticky {
-  position: sticky;
-  top: 80px;
+
+.nr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  &.nr-grid--compact { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 }
-.position-relative { position: relative; z-index: 1; }
+
+.nr-empty {
+  text-align: center;
+  padding: 64px 24px;
+  border: 1px dashed var(--nr-line-strong);
+  border-radius: calc(var(--nr-radius) * 1.5);
+}
+.nr-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--nr-line);
+  background: var(--nr-hover);
+  .v-icon { color: var(--nr-muted) !important; }
+}
+.nr-empty-title {
+  color: var(--nr-muted);
+  font-size: 15px;
+}
+@media (max-width: 600px) {
+  .nr-toolbar-end { width: 100%; }
+  .nr-search { flex: 1; width: auto; }
+}
 </style>
 
 <script lang="ts">
 import { Vue, Component, Watch } from 'vue-property-decorator'
 import { Branding, Room, User } from '@/api-ext'
 import { expand } from '@/branding/theme'
-import { joinRoom } from '@/utils/join'
+import { joinRoom, JoinOptions } from '@/utils/join'
 import RoomCard from '@/components/community/RoomCard.vue'
-import FriendsPanel from '@/components/community/FriendsPanel.vue'
 
 interface Section {
   key: string
@@ -185,7 +298,6 @@ interface Section {
 @Component({
   components: {
     RoomCard,
-    FriendsPanel,
   }
 })
 export default class HomePage extends Vue {
@@ -228,23 +340,8 @@ export default class HomePage extends Vue {
     }
   }
 
-  get heroStyle() {
-    const layers: string[] = []
-    if (this.home.hero_gradient) {
-      layers.push('linear-gradient(120deg, color-mix(in srgb, var(--nr-primary) 88%, transparent), color-mix(in srgb, var(--nr-accent) 80%, transparent))')
-    }
-    if (this.home.hero_image) {
-      layers.push(`url("${this.home.hero_image.replace(/"/g, '')}")`)
-    }
-    if (!layers.length) {
-      layers.push('linear-gradient(120deg, var(--nr-primary), var(--nr-accent))')
-    }
-    return { backgroundImage: layers.join(', ') }
-  }
-
-  get showFriends(): boolean {
-    const policy = this.$store.getters.policy
-    return !!this.user && !!policy && policy.friends_enabled && this.home.show_friends
+  get heroImageStyle() {
+    return { backgroundImage: `url("${this.home.hero_image.replace(/"/g, "")}")` }
   }
 
   get liveRooms(): Room[] {
@@ -294,7 +391,8 @@ export default class HomePage extends Vue {
   }
 
   async load() {
-    if (document.hidden) return
+    // background tabs only skip refreshes, never the first load
+    if (document.hidden && this.loaded) return
     try {
       await this.$store.dispatch('APP_DIRECTORY')
     } catch (e) {
@@ -302,12 +400,8 @@ export default class HomePage extends Vue {
     }
   }
 
-  join(room: Room) {
-    joinRoom(this, room.name)
-  }
-
-  openRoom(room: Room) {
-    this.$router.push({ name: 'room', params: { name: room.name } })
+  join(room: Room, opts: JoinOptions = {}) {
+    joinRoom(this, room.name, { ...opts, room })
   }
 
   create() {
@@ -320,7 +414,7 @@ export default class HomePage extends Vue {
   }
 
   scrollToRooms() {
-    const el = (this.$refs.rooms as Vue).$el as HTMLElement
+    const el = this.$refs.rooms as HTMLElement
     el.scrollIntoView({ behavior: 'smooth' })
   }
 
@@ -329,13 +423,19 @@ export default class HomePage extends Vue {
     this.load()
   }
 
+  onVisible() {
+    if (!document.hidden) this.load()
+  }
+
   mounted() {
     this.load()
+    document.addEventListener('visibilitychange', this.onVisible)
     this.refreshTimer = window.setInterval(this.load, 10000)
     this.tickTimer = window.setInterval(() => { this.tick = Math.floor(Date.now() / 30000) }, 30000)
   }
 
   beforeDestroy() {
+    document.removeEventListener('visibilitychange', this.onVisible)
     window.clearInterval(this.refreshTimer)
     window.clearInterval(this.tickTimer)
   }

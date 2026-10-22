@@ -13,9 +13,9 @@
       <v-progress-circular
         :rotate="270"
         :size="100"
-        :width="15"
+        :width="6"
         :value="(usedConnections / configConnections) * 100"
-        :color="usedConnections == configConnections ? 'red' : 'blue'"
+        :color="usedConnections == configConnections ? 'error' : 'primary'"
       >
         {{ usedConnections }} / {{ configConnections }}
       </v-progress-circular>
@@ -35,7 +35,7 @@
         ></v-select>
         <v-tooltip right open-delay="300">
           <template v-slot:activator="{ on, attrs }">
-            <v-btn v-bind="attrs" v-on="on" @click="LoadRooms" color="green" icon><v-icon>mdi-reload</v-icon></v-btn>
+            <v-btn v-bind="attrs" v-on="on" @click="LoadRooms" icon><v-icon>mdi-reload</v-icon></v-btn>
           </template>
           <span>Manual refresh</span>
         </v-tooltip>

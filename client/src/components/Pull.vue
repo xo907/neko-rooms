@@ -3,10 +3,9 @@
     <v-btn
       @click="dialog = true"
       :loading="loading"
-      color="info"
-      dark
+      outlined
     >
-      <v-icon class="mr-2" color="white">{{ status.active ? 'mdi-cloud-sync' : 'mdi-cloud-download-outline' }}</v-icon> Pull neko images
+      <v-icon left small>{{ status.active ? 'mdi-cloud-sync' : 'mdi-cloud-download-outline' }}</v-icon> Pull neko images
     </v-btn>
 
     <v-dialog v-model="dialog" max-width="780px">
@@ -34,7 +33,7 @@
               hide-details
               label="Neko image"
             ></v-select>
-            <v-btn color="green" class="ml-2" :loading="loading" @click="Start">
+            <v-btn color="primary" depressed class="ml-2" :loading="loading" @click="Start">
               Start
             </v-btn>
           </template>
@@ -42,7 +41,7 @@
           <v-btn v-if="status.active" color="red" text :loading="loading" @click="Stop">
             Stop
           </v-btn>
-          <v-btn color="grey" text @click="dialog = false">
+          <v-btn text @click="dialog = false">
             Close
           </v-btn>
         </v-card-actions>

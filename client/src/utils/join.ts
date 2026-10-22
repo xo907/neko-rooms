@@ -1,10 +1,13 @@
 import Vue from 'vue'
-import { api, errorMessage } from '@/api-ext'
+import { RawLocation } from 'vue-router'
+import { api, errorMessage, Room } from '@/api-ext'
+import { isPlaying, openPlayer, player } from '@/player/state'
 
 const NAME_KEY = 'neko-rooms-guest-name'
 
-// joinRoom resolves the room link (with credentials) and navigates to it.
-export async function joinRoom(vm: Vue, name: string, invite?: string): Promise<void> {
+// resolveJoinUrl returns the room link with credentials, asking guests for
+// a nickname first. It returns null when cancelled or not allowed.
+export async function resolveJoinUrl(vm: Vue, name: string, invite?: string): Promise<string | null> {
   let displayName: string | undefined
 
   if (!vm.$store.getters.user) {
@@ -21,21 +24,58 @@ export async function joinRoom(vm: Vue, name: string, invite?: string): Promise<
       confirmButtonText: 'Join room',
       inputValidator: (v: string) => (!v || !v.trim()) ? 'Please enter a name' : null,
     })
-    if (!res.isConfirmed) return
+    if (!res.isConfirmed) return null
 
     displayName = String(res.value).trim()
     try { localStorage.setItem(NAME_KEY, displayName) } catch { /* ignore */ }
   }
 
   try {
-    const url = await api.join(name, invite, displayName)
-    window.location.href = url
+    return await api.join(name, invite, displayName)
   } catch (e) {
     vm.$swal({
       title: 'Unable to join',
       text: errorMessage(e),
       icon: 'error',
     })
+    return null
+  }
+}
+
+export function watchRoute(name: string, invite?: string): RawLocation {
+  return { name: 'watch', params: { name }, query: invite ? { invite } : {} }
+}
+
+export interface JoinOptions {
+  invite?: string
+  room?: Room | null
+  from?: Element | null // the player grows from this element
+  image?: string // preview shown while the room connects
+}
+
+// joinRoom opens a room in the player, growing it from the clicked element.
+export async function joinRoom(vm: Vue, name: string, opts: JoinOptions = {}): Promise<void> {
+  if (isPlaying(name)) {
+    vm.$router.push(watchRoute(name, player.invite || opts.invite)).catch(() => { /* ignore */ })
+    return
+  }
+
+  const url = await resolveJoinUrl(vm, name, opts.invite)
+  if (!url) return
+
+  openPlayer({
+    name,
+    invite: opts.invite,
+    url,
+    room: opts.room,
+    image: opts.image,
+    from: opts.from ? opts.from.getBoundingClientRect() : null,
+    returnTo: vm.$route.fullPath,
+  })
+
+  // when growing from an element, the player opens the watch route itself
+  if (!player.expanding) {
+    vm.$router.push(watchRoute(name, opts.invite)).catch(() => { /* ignore */ })
   }
 }
 

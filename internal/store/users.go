@@ -30,13 +30,14 @@ type User struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	LastLoginAt  *time.Time `json:"last_login_at"`
+	Avatar       int64      `json:"avatar"` // avatar version, 0 = none
 }
 
 func (u *User) IsAdmin() bool {
 	return u != nil && u.Role == RoleAdmin
 }
 
-const userColumns = `id, username, display_name, email, password_hash, role, disabled, room_limit, created_at, updated_at, last_login_at`
+const userColumns = `id, username, display_name, email, password_hash, role, disabled, room_limit, created_at, updated_at, last_login_at, ` + avatarVersion
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -45,7 +46,7 @@ type scanner interface {
 func scanUser(row scanner) (*User, error) {
 	u := &User{}
 	var lastLogin sql.NullTime
-	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.PasswordHash, &u.Role, &u.Disabled, &u.RoomLimit, &u.CreatedAt, &u.UpdatedAt, &lastLogin)
+	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.PasswordHash, &u.Role, &u.Disabled, &u.RoomLimit, &u.CreatedAt, &u.UpdatedAt, &lastLogin, &u.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

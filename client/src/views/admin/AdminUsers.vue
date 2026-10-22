@@ -59,6 +59,10 @@
                   <v-list-item-icon><v-icon>mdi-shield-crown-outline</v-icon></v-list-item-icon>
                   <v-list-item-title>{{ item.role === 'admin' ? 'Make regular user' : 'Make admin' }}</v-list-item-title>
                 </v-list-item>
+                <v-list-item v-if="item.avatar" @click="removeAvatar(item)">
+                  <v-list-item-icon><v-icon>mdi-image-remove-outline</v-icon></v-list-item-icon>
+                  <v-list-item-title>Remove photo</v-list-item-title>
+                </v-list-item>
                 <v-list-item @click="revokeSessions(item)">
                   <v-list-item-icon><v-icon>mdi-logout-variant</v-icon></v-list-item-icon>
                   <v-list-item-title>Sign out everywhere</v-list-item-title>
@@ -248,6 +252,15 @@ export default class AdminUsers extends Vue {
   async setRole(u: User, role: Role) {
     try {
       await api.updateUser(u.id, { role })
+      await this.load()
+    } catch (e) {
+      this.$swal({ icon: 'error', title: 'Error', text: errorMessage(e) })
+    }
+  }
+
+  async removeAvatar(u: User) {
+    try {
+      await api.deleteUserAvatar(u.id)
       await this.load()
     } catch (e) {
       this.$swal({ icon: 'error', title: 'Error', text: errorMessage(e) })

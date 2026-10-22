@@ -240,7 +240,7 @@
           </v-row>
           <v-row align="center" no-gutters>
             <h2> Environment variables </h2>
-            <v-btn @click="addEnv" icon color="green"><v-icon>mdi-plus</v-icon></v-btn>
+            <v-btn @click="addEnv" icon><v-icon>mdi-plus</v-icon></v-btn>
           </v-row>
           <v-row align="center" v-for="({ key, val }, index) in envList" :key="'env-'+index">
             <v-col class="py-0">
@@ -261,12 +261,12 @@
               ></v-text-field>
             </v-col>
             <div>
-              <v-btn @click="delEnv(index)" icon color="red"><v-icon>mdi-close</v-icon></v-btn>
+              <v-btn @click="delEnv(index)" icon><v-icon>mdi-close</v-icon></v-btn>
             </div>
           </v-row>
           <v-row align="center" no-gutters class="my-3">
               <h2> Mounts </h2>
-              <v-btn @click="addMount" icon color="green"><v-icon>mdi-plus</v-icon></v-btn>
+              <v-btn @click="addMount" icon><v-icon>mdi-plus</v-icon></v-btn>
           </v-row>
           <v-row align="center" class="mb-2" v-for="({ type, host_path, container_path }, index) in data.mounts" :key="'mount-'+index">
             <v-col class="py-0" cols="2">
@@ -297,7 +297,7 @@
               ></v-text-field>
             </v-col>
             <div>
-              <v-btn @click="delMount(index)" icon color="red"><v-icon>mdi-close</v-icon></v-btn>
+              <v-btn @click="delMount(index)" icon><v-icon>mdi-close</v-icon></v-btn>
             </div>
           </v-row>
           <v-row align="center" no-gutters v-if="data.mounts && data.mounts.length > 0">
@@ -534,23 +534,21 @@
     <v-card-actions>
       <v-spacer></v-spacer>
       <v-btn
-        color="gray darken-1"
         text
         @click="Close"
       >
         Close
       </v-btn>
       <v-btn
-        color="blue"
-        dark
+        outlined
         @click="Create(false)"
         :loading="loading && !loadingWithStart"
       >
         Create
       </v-btn>
       <v-btn
-        color="green"
-        dark
+        color="primary"
+        depressed
         @click="CreateAndStart()"
         :loading="loadingWithStart"
       >

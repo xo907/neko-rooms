@@ -8,6 +8,7 @@ Vue.use(VueRouter)
 const routes: RouteConfig[] = [
   { path: '/', name: 'home', component: () => import('./views/HomePage.vue') },
   { path: '/r/:name', name: 'room', component: () => import('./views/RoomPage.vue'), props: true },
+  { path: '/r/:name/live', name: 'watch', component: () => import('./views/WatchPage.vue'), props: true, meta: { bare: true } },
 
   { path: '/login', name: 'login', component: () => import('./views/AuthPage.vue'), props: { mode: 'login' }, meta: { guestOnly: true, bare: true } },
   { path: '/register', name: 'register', component: () => import('./views/AuthPage.vue'), props: { mode: 'register' }, meta: { guestOnly: true, bare: true } },
