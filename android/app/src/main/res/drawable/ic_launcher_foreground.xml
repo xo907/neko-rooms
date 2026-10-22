@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the logo's X and O, scaled into the adaptive icon safe zone -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <group
+        android:pivotX="64"
+        android:pivotY="64"
+        android:scaleX="0.62"
+        android:scaleY="0.62"
+        android:translateX="-4">
+        <path
+            android:pathData="M22,41L54,87M54,41L22,87"
+            android:strokeWidth="13"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="square" />
+        <path
+            android:pathData="M68,64a20,20 0,1 0,40 0a20,20 0,1 0,-40 0"
+            android:strokeWidth="12"
+            android:strokeColor="#FF0000" />
+    </group>
+</vector>

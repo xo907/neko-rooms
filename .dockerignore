@@ -4,3 +4,4 @@ client/node_modules
 .env
 .env.local
 local/.build
+android
