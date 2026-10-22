@@ -84,7 +84,11 @@ fun RoomScreen(
     }
 
     fun join() {
-        if (status?.user != null) onJoin(null) else askNickname = true
+        when {
+            status?.user != null -> onJoin(null)
+            status?.policy?.roomsRequireLogin == true -> onSignIn()
+            else -> askNickname = true
+        }
     }
 
     Scaffold(
