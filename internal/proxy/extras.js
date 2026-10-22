@@ -1,9 +1,9 @@
-// Room extras: raised hands, the up next queue and what is playing, plus
-// reactions shared with the app. Injected into neko room pages, talks to the
+// Room extras: raised hands and what is playing, plus reactions shared with
+// the app. Injected into neko room pages, talks to the
 // live channel of the room with the ticket that came with the join link.
 //
-// Everything sits in neko's bottom bar, next to its own controls, so the
-// video stays clear. Reactions use neko's own emotes: the ones sent here go
+// Nothing sits on the video: what is playing is in the middle of the top
+// bar, raised hands in neko's bottom bar next to its controls. Reactions use neko's own emotes: the ones sent here go
 // to the app, the ones sent from the app float up like neko's.
 (function () {
   var C = __NR_CONFIG__;
@@ -17,7 +17,7 @@
   if (!ticket || !window.EventSource) return;
 
   var base = C.api + 'public/live/' + encodeURIComponent(C.room) + '/';
-  var me = null, queue = [], hands = [], playing = '';
+  var me = null, hands = [], playing = '';
   var ui = {};
 
   //
@@ -45,6 +45,8 @@
   // neko emote names <-> emoji, read from neko's own stylesheet, where each
   // emote is a twemoji image named after its code points
   var toEmoji = {}, toEmote = {};
+  // without the variation selector, apps and neko differ there
+  function plain(e) { return e.split(String.fromCharCode(0xfe0f)).join(''); }
   function readEmotes() {
     for (var i = 0; i < document.styleSheets.length; i++) {
       var rules;
@@ -59,7 +61,7 @@
           var emoji = String.fromCodePoint.apply(null, f[1].split('-').map(function (h) { return parseInt(h, 16); }));
           toEmoji[m[1]] = emoji;
           toEmote[emoji] = m[1];
-          toEmote[emoji.replace(/️/g, '')] = m[1];
+          toEmote[plain(emoji)] = m[1];
         } catch (e) { /* not a code point */ }
       }
     }
@@ -110,22 +112,19 @@
     switch (ev.type) {
       case 'init':
         me = ev.you;
-        queue = ev.queue || [];
         hands = ev.hands || [];
         playing = ev.playing || '';
         render();
         break;
-      case 'queue': queue = ev.queue || []; renderQueue(); break;
       case 'hands': hands = ev.hands || []; renderHands(); break;
       case 'playing': playing = ev.title || ''; renderPlaying(); break;
       case 'reaction': if (ev.via !== 'neko') react(ev.emoji, ev.name); break;
-      case 'played': toast((ev.name || 'Someone') + ' played ' + (ev.item.title || host(ev.item.url))); break;
     }
   }
 
   // a reaction from the app, shown like neko's own emotes
   function react(emoji, name) {
-    var type = toEmote[emoji] || toEmote[emoji.replace(/️/g, '')];
+    var type = toEmote[emoji] || toEmote[plain(emoji)];
     try {
       if (type) { acc().chat.newEmote({ type: type }); return; }
     } catch (e) { /* fall back */ }
@@ -142,7 +141,6 @@
     if (text != null) e.textContent = text;
     return e;
   }
-  function host(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } }
 
   var css = '' +
     '.nrx{--a:var(--nr-primary,#2dd4bf);--s:rgba(255,255,255,.07);--l:rgba(255,255,255,.1);font:500 13px/1.4 var(--nr-font,system-ui,sans-serif);color:#fafafa}' +
@@ -159,33 +157,15 @@
     '.nrx-chip em{font-style:normal;color:rgba(255,255,255,.55);flex:none}' +
     '.nrx-chip .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.nrx-chip button{flex:none;height:24px;padding:0 10px;border:0;border-radius:99px;background:var(--a);color:#06110f;font:600 12px/1 inherit;cursor:pointer;white-space:nowrap}' +
+    '.nrx-np{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;max-width:min(420px,40%);background:rgba(255,255,255,.06)}' +
+    '.nrx-np em{color:var(--a)}' +
     '.nrx-fly{position:absolute;bottom:20px;z-index:29;pointer-events:none;display:flex;flex-direction:column;align-items:center;animation:nrx-up 3.2s cubic-bezier(.2,.6,.3,1) forwards}' +
     '.nrx-fly b{font-size:30px;line-height:1;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}' +
     '.nrx-fly span{margin-top:2px;padding:1px 7px;border-radius:99px;background:rgba(0,0,0,.55);font-size:11px;white-space:nowrap}' +
     '@keyframes nrx-up{0%{transform:translate(0,0) scale(.6);opacity:0}10%{opacity:1;transform:translate(0,-20px) scale(1.1)}100%{transform:translate(var(--dx),-300px) scale(1);opacity:0}}' +
-    '.nrx-panel{position:fixed;z-index:1000;width:min(360px,calc(100vw - 24px));max-height:min(60vh,460px);display:none;flex-direction:column;border-radius:16px;background:rgba(14,14,17,.96);backdrop-filter:blur(16px);box-shadow:inset 0 0 0 1px var(--l),0 30px 70px -20px rgba(0,0,0,.8)}' +
-    '.nrx-panel.open{display:flex}' +
-    '.nrx-panel h4{margin:0;padding:14px 16px 10px;font-size:14px;font-weight:600;display:flex;justify-content:space-between;align-items:center}' +
-    '.nrx-panel h4 em{font-style:normal;font-weight:500;color:rgba(255,255,255,.5);font-size:12px}' +
-    '.nrx-add{display:flex;gap:6px;padding:0 12px 10px}' +
-    '.nrx-add input{flex:1;min-width:0;height:34px;padding:0 12px;border:1px solid var(--l);border-radius:10px;background:rgba(255,255,255,.05);color:#fafafa;font:inherit;outline:none}' +
-    '.nrx-add input:focus{border-color:var(--a)}' +
-    '.nrx-add button{height:34px;padding:0 14px;border:0;border-radius:10px;background:var(--a);color:#06110f;font:600 13px/1 inherit;cursor:pointer}' +
-    '.nrx-list{list-style:none;margin:0;padding:0 8px 8px;overflow:auto}' +
-    '.nrx-list li{display:flex;align-items:center;gap:8px;padding:8px;border-radius:10px}' +
-    '.nrx-list li:hover{background:rgba(255,255,255,.05)}' +
-    '.nrx-vote{display:flex;flex-direction:column;align-items:center;min-width:34px;height:40px;justify-content:center;border:0;border-radius:10px;background:rgba(255,255,255,.06);color:#fafafa;font:600 12px/1.1 inherit;cursor:pointer}' +
-    '.nrx-vote.on{background:color-mix(in srgb,var(--a) 22%,transparent);color:var(--a)}' +
-    '.nrx-item{flex:1;min-width:0}' +
-    '.nrx-item a{display:block;color:#fafafa;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
-    '.nrx-item small{display:block;color:rgba(255,255,255,.5);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
-    '.nrx-icon{width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:rgba(255,255,255,.7);font-size:14px;cursor:pointer}' +
-    '.nrx-icon:hover{background:rgba(255,255,255,.1);color:#fff}' +
-    '.nrx-icon.play{color:var(--a)}' +
-    '.nrx-empty{padding:4px 16px 16px;color:rgba(255,255,255,.5)}' +
     '.nrx-toast{position:fixed;left:50%;bottom:140px;z-index:1001;transform:translateX(-50%);padding:8px 14px;border-radius:99px;background:rgba(14,14,17,.92);box-shadow:inset 0 0 0 1px var(--l);white-space:nowrap;max-width:80%;overflow:hidden;text-overflow:ellipsis;animation:nrx-fade 3.5s forwards}' +
     '@keyframes nrx-fade{0%,85%{opacity:1}100%{opacity:0}}' +
-    '@media (max-width:1100px){.nrx-np{display:none!important}}' +
+    '@media (max-width:700px){.nrx-np{display:none!important}}' +
     '@media (max-width:760px){.nrx-btn span.l{display:none}.nrx-chip{max-width:150px}}';
 
   function mount() {
@@ -207,57 +187,14 @@
       post('hand', { up: !mine() }).catch(function (e) { toast(e.message); });
     };
 
-    ui.next = el('button', 'nrx-btn');
-    ui.next.title = 'Up next';
-    ui.next.onclick = function () {
-      var open = !ui.panel.classList.contains('open');
-      ui.panel.classList.toggle('open', open);
-      if (open) { place(); ui.input.focus(); }
-    };
-
     ui.hands = el('div', 'nrx-chip');
-    ui.playing = el('div', 'nrx-chip solo nrx-np');
+    ui.playing = el('div', 'nrx nrx-chip solo nrx-np');
 
     ui.dock.appendChild(ui.hand);
-    ui.dock.appendChild(ui.next);
     ui.dock.appendChild(ui.hands);
-    ui.dock.appendChild(ui.playing);
     ui.root.appendChild(ui.dock);
 
-    ui.panel = el('div', 'nrx-panel nrx');
-    var h = el('h4');
-    h.appendChild(el('span', '', 'Up next'));
-    ui.count = el('em');
-    h.appendChild(ui.count);
-    ui.panel.appendChild(h);
-    var form = el('form', 'nrx-add');
-    ui.input = el('input');
-    ui.input.placeholder = 'Paste a link to add it';
-    ui.input.setAttribute('autocomplete', 'off');
-    var add = el('button', '', 'Add');
-    add.type = 'submit';
-    form.appendChild(ui.input);
-    form.appendChild(add);
-    form.onsubmit = function (e) {
-      e.preventDefault();
-      var url = ui.input.value.trim();
-      if (!url) return;
-      post('queue', { url: url }).then(function () { ui.input.value = ''; }).catch(function (err) { toast(err.message); });
-    };
-    // keys typed here must not reach the remote browser
-    ['keydown', 'keyup', 'keypress'].forEach(function (t) {
-      ui.panel.addEventListener(t, function (e) { e.stopPropagation(); });
-    });
-    ui.panel.appendChild(form);
-    ui.list = el('ul', 'nrx-list');
-    ui.panel.appendChild(ui.list);
-    document.body.appendChild(ui.panel);
-
-    // close the panel when clicking elsewhere
-    document.addEventListener('mousedown', function (e) {
-      if (!ui.panel.contains(e.target) && !ui.next.contains(e.target)) ui.panel.classList.remove('open');
-    }, true);
-    window.addEventListener('resize', function () { dockIn(); place(); });
+    window.addEventListener('resize', dockIn);
 
     dockIn();
     return true;
@@ -266,6 +203,13 @@
   // dockIn puts the controls in neko's bottom bar, or over the video, out of
   // the way, when the bar is hidden (small screens)
   function dockIn() {
+    // what is playing sits in the middle of neko's top bar
+    var header = document.querySelector('#neko .header-container .header') || document.querySelector('#neko .header');
+    if (header && ui.playing.parentNode !== header) {
+      if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
+      header.appendChild(ui.playing);
+    }
+
     var bar = document.querySelector('#neko .room-container .room-menu .settings');
     var inBar = bar && bar.offsetParent !== null;
     var target = inBar ? bar : ui.video;
@@ -281,20 +225,12 @@
     ui.dock.classList.remove('idle');
     clearTimeout(idleTimer);
     idleTimer = setTimeout(function () {
-      if (ui.dock.classList.contains('over') && !ui.panel.classList.contains('open')) ui.dock.classList.add('idle');
+      if (ui.dock.classList.contains('over')) ui.dock.classList.add('idle');
     }, 3000);
   }
   ['mousemove', 'touchstart'].forEach(function (t) {
     document.addEventListener(t, function () { if (ui.dock && ui.dock.classList.contains('over')) idle(); }, { passive: true });
   });
-
-  // place opens the panel above the up next button
-  function place() {
-    if (!ui.panel || !ui.panel.classList.contains('open')) return;
-    var r = ui.next.getBoundingClientRect();
-    ui.panel.style.left = Math.max(12, Math.min(r.left, window.innerWidth - ui.panel.offsetWidth - 12)) + 'px';
-    ui.panel.style.bottom = (window.innerHeight - r.top + 10) + 'px';
-  }
 
   function mine() {
     if (!me) return false;
@@ -305,7 +241,6 @@
   function render() {
     renderPlaying();
     renderHands();
-    renderQueue();
   }
 
   function renderPlaying() {
@@ -314,7 +249,7 @@
     ui.playing.style.display = playing ? '' : 'none';
     if (!playing) return;
     ui.playing.title = playing;
-    ui.playing.appendChild(el('em', '', '▶'));
+    ui.playing.appendChild(el('em', '', 'Now playing'));
     ui.playing.appendChild(el('span', 't', playing));
   }
 
@@ -346,55 +281,6 @@
       };
       ui.hands.appendChild(give);
     }
-  }
-
-  function renderQueue() {
-    if (!ui.next) return;
-    ui.next.innerHTML = '<span>▶</span><span class="l">Up next</span>';
-    if (queue.length) ui.next.appendChild(el('span', 'nrx-badge', String(queue.length)));
-    ui.count.textContent = queue.length ? queue.length + (queue.length === 1 ? ' link' : ' links') : '';
-
-    ui.list.innerHTML = '';
-    if (!queue.length) {
-      ui.list.appendChild(el('li', 'nrx-empty', 'Nothing queued. Add a video or page everyone can vote on.'));
-      place();
-      return;
-    }
-    var control = hostName();
-    queue.forEach(function (it) {
-      var li = el('li');
-      var voted = me && it.voters.indexOf(me.id) >= 0;
-      var vote = el('button', 'nrx-vote' + (voted ? ' on' : ''));
-      vote.title = voted ? 'Take back your vote' : 'Vote for it';
-      vote.appendChild(el('span', '', '▲'));
-      vote.appendChild(el('span', '', String(it.voters.length)));
-      vote.onclick = function () { post('queue/' + it.id + '/vote').catch(function (e) { toast(e.message); }); };
-      li.appendChild(vote);
-
-      var info = el('div', 'nrx-item');
-      var a = el('a', '', it.title || host(it.url));
-      a.href = it.url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      info.appendChild(a);
-      info.appendChild(el('small', '', host(it.url) + ' · added by ' + it.by));
-      li.appendChild(info);
-
-      if (!control || control === myName() || (me && me.manager)) {
-        var play = el('button', 'nrx-icon play', '▶');
-        play.title = 'Play it now';
-        play.onclick = function () { post('queue/' + it.id + '/play').catch(function (e) { toast(e.message); }); };
-        li.appendChild(play);
-      }
-      if (me && (it.by_id === me.id || me.manager || control === myName())) {
-        var rm = el('button', 'nrx-icon', '✕');
-        rm.title = 'Remove';
-        rm.onclick = function () { post('queue/' + it.id + '/remove').catch(function (e) { toast(e.message); }); };
-        li.appendChild(rm);
-      }
-      ui.list.appendChild(li);
-    });
-    place();
   }
 
   // fly floats an emoji neko has no emote for
@@ -441,7 +327,6 @@
       v.$store.watch(function (s) { return s.remote && s.remote.id; }, function () {
         if (hosting() && mine()) post('hand', { up: false }).catch(function () {});
         renderHands();
-        renderQueue();
       });
     }
     // neko re-renders its bar on layout changes

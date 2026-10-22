@@ -182,8 +182,6 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     var live by remember { mutableStateOf<LiveClient?>(null) }
     val noLive = remember { MutableStateFlow(LiveState()) }
     val ls by (live?.state ?: noLive).collectAsState()
-    var reactOpen by remember { mutableStateOf(false) }
-    var queueOpen by remember { mutableStateOf(false) }
     var touchPref by remember { mutableStateOf(model.prefs.touchInput) }
     var keyboard by remember { mutableStateOf(false) }
     var controls by remember { mutableStateOf(true) }
@@ -342,11 +340,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                     client.releaseControl()
                     live?.hand(false, h.id)
                 },
-                reactOpen = reactOpen,
-                onToggleReact = { reactOpen = !reactOpen; poke++ },
-                onReact = { live?.react(it); poke++ },
                 onHand = { live?.hand(!ls.handUp); poke++ },
-                onQueue = { queueOpen = true },
             )
         }
     }
@@ -453,18 +447,6 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
         if (keyboard) RemoteKeyboard(client, ctrl) { ctrl = false }
     }
 
-    if (queueOpen && live != null) {
-        QueueSheet(
-            ls = ls,
-            hostName = st.hostName,
-            onAdd = { live?.add(it) },
-            onVote = { live?.vote(it) },
-            onPlay = { live?.play(it) },
-            onRemove = { live?.remove(it) },
-            onDismiss = { queueOpen = false },
-        )
-    }
-
     if (members) {
         AlertDialog(
             onDismissRequest = { members = false },
@@ -486,45 +468,30 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     }
 }
 
-// SocialBar has reactions, raising a hand and the up next queue
+// SocialBar is raising a hand for control, and who is next
 @Composable
 private fun SocialBar(
     ls: LiveState,
     isHost: Boolean,
     onPass: (app.rooms.neko.Hand) -> Unit,
-    reactOpen: Boolean,
-    onToggleReact: () -> Unit,
-    onReact: (String) -> Unit,
     onHand: () -> Unit,
-    onQueue: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (reactOpen) {
-            LiveClient.Reactions.forEach { e ->
-                Surface(onClick = { onReact(e) }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    Text(e, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
-                }
-            }
-            SocialPill("✕", "Done", onClick = onToggleReact)
-        } else {
-            SocialPill("😀", "React", onClick = onToggleReact)
-            SocialPill("✋", if (ls.handUp) "Lower hand" else "Raise hand", active = ls.handUp, badge = ls.hands.size, onClick = onHand)
-            SocialPill("▶", "Up next", badge = ls.queue.size, onClick = onQueue)
-            ls.hands.firstOrNull()?.let { h ->
-                val mine = h.id == ls.me?.id
-                val more = if (ls.hands.size > 1) " · +${ls.hands.size - 1}" else ""
-                OverlayChip(
-                    "",
-                    (if (mine) "You are next" else "${h.name} is next") + more,
-                    action = if (isHost && !mine) "Pass control" else null,
-                    onAction = { onPass(h) },
-                    dark = false,
-                )
-            }
+        SocialPill("✋", if (ls.handUp) "Lower hand" else "Raise hand", active = ls.handUp, badge = ls.hands.size, onClick = onHand)
+        ls.hands.firstOrNull()?.let { h ->
+            val mine = h.id == ls.me?.id
+            val more = if (ls.hands.size > 1) " · +${ls.hands.size - 1}" else ""
+            OverlayChip(
+                "",
+                (if (mine) "You are next" else "${h.name} is next") + more,
+                action = if (isHost && !mine) "Pass control" else null,
+                onAction = { onPass(h) },
+                dark = false,
+            )
         }
     }
 }
@@ -636,87 +603,6 @@ private fun FlyingEmoji(r: Reaction, w: androidx.compose.ui.unit.Dp, h: androidx
                 maxLines = 1,
                 modifier = Modifier.background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50)).padding(horizontal = 6.dp, vertical = 1.dp),
             )
-        }
-    }
-}
-
-// QueueSheet is the up next list: links people add and vote on
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun QueueSheet(
-    ls: LiveState,
-    hostName: String?,
-    onAdd: (String) -> Unit,
-    onVote: (Int) -> Unit,
-    onPlay: (Int) -> Unit,
-    onRemove: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val me = ls.me
-    var link by remember { mutableStateOf("") }
-    val canPlay = hostName == null || hostName == me?.name || me?.manager == true
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(horizontal = 16.dp).navigationBarsPadding().imePadding()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Up next", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.weight(1f))
-                if (ls.queue.isNotEmpty()) {
-                    Text("${ls.queue.size} ${if (ls.queue.size == 1) "link" else "links"}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = link,
-                    onValueChange = { link = it },
-                    placeholder = { Text("Paste a link to add it") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { if (link.isNotBlank()) { onAdd(link.trim()); link = "" } }),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = { onAdd(link.trim()); link = "" }, enabled = link.isNotBlank()) { Text("Add") }
-            }
-            Spacer(Modifier.height(8.dp))
-            if (ls.queue.isEmpty()) {
-                Text(
-                    "Nothing queued. Add a video or page everyone can vote on.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 20.dp),
-                )
-            } else {
-                LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                    items(ls.queue, key = { it.id }) { item ->
-                        val voted = me != null && me.id in item.voters
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
-                            Surface(
-                                onClick = { onVote(item.id) },
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (voted) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                contentColor = if (voted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            ) {
-                                Column(Modifier.size(width = 42.dp, height = 46.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                    Text("▲", fontSize = 11.sp)
-                                    Text("${item.voters.size}", style = MaterialTheme.typography.labelLarge)
-                                }
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(item.title.ifBlank { item.host }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${item.host} · added by ${item.by}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            if (canPlay) {
-                                IconButton(onClick = { onPlay(item.id) }) { Icon(Icons.Outlined.PlayArrow, "Play it now", tint = MaterialTheme.colorScheme.primary) }
-                            }
-                            if (me != null && (item.byId == me.id || me.manager || hostName == me.name)) {
-                                IconButton(onClick = { onRemove(item.id) }) { Icon(Icons.Outlined.Close, "Remove") }
-                            }
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }
