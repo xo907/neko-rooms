@@ -317,6 +317,13 @@ func (s *Room) GetInstanceUrl() url.URL {
 }
 
 func (s *Room) GetRoomUrl(roomName string) string {
+	// without an instance url and traefik, rooms are served by neko-rooms
+	// itself: use a path, so links work on whatever address the site was
+	// opened on (localhost, LAN or a tailnet), no domain required
+	if s.InstanceUrl == nil && !s.Traefik.Enabled {
+		return path.Join("/", s.PathPrefix, roomName) + "/"
+	}
+
 	instanceUrl := s.GetInstanceUrl()
 
 	if after, ok := strings.CutPrefix(instanceUrl.Host, "*."); ok {

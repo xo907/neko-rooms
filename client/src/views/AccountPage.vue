@@ -1,10 +1,23 @@
 <template>
   <v-container class="py-8" style="max-width: 900px">
-    <div class="d-flex align-center mb-6">
-      <UserAvatar :user="user" :size="64" class="mr-4" />
-      <div>
+    <div class="d-flex align-center flex-wrap mb-6" style="gap: 20px">
+      <button type="button" class="nr-avatar-edit" :disabled="uploading" title="Change photo" @click="pickAvatar">
+        <UserAvatar :user="user" :size="80" />
+        <span class="nr-avatar-edit-overlay">
+          <v-progress-circular v-if="uploading" indeterminate size="22" width="2" />
+          <v-icon v-else>mdi-camera-outline</v-icon>
+        </span>
+      </button>
+      <input ref="avatarInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="onAvatarFile">
+      <div class="flex-grow-1" style="min-width: 0">
         <h1 class="nr-page-title nr-heading text-h4">{{ user.display_name || user.username }}</h1>
         <div class="text--secondary">@{{ user.username }} · {{ user.role }} · member since {{ user.created_at | datetime }}</div>
+        <div class="mt-3 d-flex flex-wrap" style="gap: 8px">
+          <v-btn small outlined :loading="uploading" @click="pickAvatar">
+            <v-icon left small>mdi-image-outline</v-icon>{{ user.avatar ? 'Change photo' : 'Upload photo' }}
+          </v-btn>
+          <v-btn v-if="user.avatar" small text :disabled="uploading" @click="removeAvatar">Remove</v-btn>
+        </div>
       </div>
     </div>
 
@@ -61,10 +74,63 @@
   </v-container>
 </template>
 
+<style lang="scss" scoped>
+.nr-avatar-edit {
+  position: relative;
+  display: inline-flex;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--nr-line-strong);
+  transition: box-shadow .18s;
+  &:hover, &:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--nr-primary) 45%, transparent); }
+  &:hover .nr-avatar-edit-overlay, &:disabled .nr-avatar-edit-overlay { opacity: 1; }
+}
+.nr-avatar-edit-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .5);
+  opacity: 0;
+  transition: opacity .18s;
+  .v-icon { color: #fff !important; }
+}
+</style>
+
 <script lang="ts">
 import { Vue, Component } from 'vue-property-decorator'
 import { api, errorMessage, Session, User } from '@/api-ext'
 import UserAvatar from '@/components/community/UserAvatar.vue'
+
+const AVATAR_SIZE = 256
+
+// cropSquare center-crops an image file to a square avatar
+async function cropSquare(file: File): Promise<Blob> {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = new Image()
+    img.src = url
+    await img.decode()
+
+    const side = Math.min(img.naturalWidth, img.naturalHeight)
+    const size = Math.min(AVATAR_SIZE, side)
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = size
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('unable to process the image')
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size)
+
+    // browsers without webp encoding fall back to png
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', 0.9))
+    if (!blob) throw new Error('unable to process the image')
+    return blob
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
 
 export function describeAgent(ua: string): string {
   if (!ua) return 'Unknown device'
@@ -86,6 +152,7 @@ export default class AccountPage extends Vue {
   next2 = ''
   savingProfile = false
   savingPassword = false
+  uploading = false
   sessions: Session[] = []
 
   describeAgent = describeAgent
@@ -132,6 +199,43 @@ export default class AccountPage extends Vue {
       this.$swal({ icon: 'error', title: 'Unable to change password', text: errorMessage(e) })
     } finally {
       this.savingPassword = false
+    }
+  }
+
+  pickAvatar() {
+    (this.$refs.avatarInput as HTMLInputElement).click()
+  }
+
+  async onAvatarFile(e: Event) {
+    const input = e.target as HTMLInputElement
+    const file = input.files && input.files[0]
+    input.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      this.$swal({ icon: 'error', title: 'Please pick an image' })
+      return
+    }
+
+    this.uploading = true
+    try {
+      await api.uploadAvatar(await cropSquare(file))
+      await this.$store.dispatch('APP_STATUS')
+    } catch (err) {
+      this.$swal({ icon: 'error', title: 'Unable to upload photo', text: errorMessage(err) })
+    } finally {
+      this.uploading = false
+    }
+  }
+
+  async removeAvatar() {
+    this.uploading = true
+    try {
+      await api.deleteAvatar()
+      await this.$store.dispatch('APP_STATUS')
+    } catch (err) {
+      this.$swal({ icon: 'error', title: 'Unable to remove photo', text: errorMessage(err) })
+    } finally {
+      this.uploading = false
     }
   }
 

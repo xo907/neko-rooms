@@ -166,7 +166,6 @@
                 <v-select v-model="draft.home.card_style" :items="[{ text: 'Large tiles', value: 'tile' }, { text: 'Compact tiles', value: 'compact' }]" label="Card style" outlined dense />
                 <v-switch v-model="draft.home.show_search" inset dense label="Search box" />
                 <v-switch v-model="draft.home.show_categories" inset dense label="Category filter" />
-                <v-switch v-model="draft.home.show_friends" inset dense label="Friends sidebar" />
                 <v-switch v-model="draft.home.show_offline" inset dense label="List rooms that are not running" />
                 <v-combobox v-model="draft.home.categories" label="Categories" multiple chips small-chips deletable-chips outlined dense hint="Suggested when creating rooms, press enter to add" persistent-hint />
               </v-col>

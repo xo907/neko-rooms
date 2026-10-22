@@ -4,7 +4,7 @@
       <v-progress-circular
         :size="70"
         :width="7"
-        color="blue"
+        color="primary"
         indeterminate
       ></v-progress-circular>
     </div>
@@ -24,9 +24,9 @@
             <v-progress-circular
               :rotate="270"
               :size="100"
-              :width="15"
+              :width="6"
               :value="settings.max_connections == 0 ? 100 : ((stats.connections / settings.max_connections) * 100)"
-              color="blue"
+              color="primary"
             >
               {{ stats.connections }} <template v-if="settings.max_connections > 0">/ {{ settings.max_connections }}</template>
             </v-progress-circular>
@@ -47,16 +47,16 @@
                 <tr v-for="member in stats.members" :key="member.id">
                   <td>{{ member.displayname }}</td>
                   <td class="text-center">
-                    <v-icon v-if="stats.host == member.id" small color="green">mdi-keyboard</v-icon>
-                    <v-icon v-else small color="red">mdi-keyboard</v-icon>
+                    <v-icon v-if="stats.host == member.id" small color="success">mdi-keyboard</v-icon>
+                    <v-icon v-else small color="error">mdi-keyboard</v-icon>
                   </td>
                   <td class="text-center">
-                    <v-icon v-if="member.admin" small color="green">mdi-shield-check</v-icon>
-                    <v-icon v-else small color="red">mdi-shield-off</v-icon>
+                    <v-icon v-if="member.admin" small color="success">mdi-shield-check</v-icon>
+                    <v-icon v-else small color="error">mdi-shield-off</v-icon>
                   </td>
                   <td class="text-center">
-                    <v-icon v-if="member.muted" small color="red">mdi-volume-mute</v-icon>
-                    <v-icon v-else small color="green">mdi-volume-high</v-icon>
+                    <v-icon v-if="member.muted" small color="error">mdi-volume-mute</v-icon>
+                    <v-icon v-else small color="success">mdi-volume-high</v-icon>
                   </td>
                 </tr>
               </tbody>

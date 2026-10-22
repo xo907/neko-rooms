@@ -58,6 +58,9 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 		r.Get("/{roomName}/thumbnail.jpg", manager.publicRoomThumbnail)
 	})
 
+	r.Get("/public/avatars", manager.publicAvatarsLookup)
+	r.Get("/public/avatars/{userId}", manager.publicAvatar)
+
 	//
 	// signed in users
 	//
@@ -66,6 +69,8 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 		r.Use(auth.RequireUser)
 
 		r.Put("/account", manager.accountUpdate)
+		r.Post("/account/avatar", manager.accountAvatarUpload)
+		r.Delete("/account/avatar", manager.accountAvatarDelete)
 		r.Post("/account/password", manager.accountPassword)
 		r.Get("/account/sessions", manager.accountSessions)
 		r.Delete("/account/sessions", manager.accountSessionsRevoke)
@@ -150,6 +155,7 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 			r.Post("/users", manager.adminUsersCreate)
 			r.Put("/users/{userId}", manager.adminUsersUpdate)
 			r.Delete("/users/{userId}", manager.adminUsersDelete)
+			r.Delete("/users/{userId}/avatar", manager.adminUserAvatarDelete)
 			r.Get("/users/{userId}/sessions", manager.adminUserSessions)
 			r.Delete("/users/{userId}/sessions", manager.adminUserSessionsRevoke)
 

@@ -83,6 +83,20 @@ export function logoFor(b: Branding, dark: boolean): string {
   return (!dark && b.logo_light) ? b.logo_light : b.logo
 }
 
+// readable text color on top of a solid color
+function onColor(hex: string): string {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return "#ffffff"
+  let h = m[1]
+  if (h.length === 3) h = h.split("").map(c => c + c).join("")
+  const [r, g, b] = [0, 2, 4].map(i => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  })
+  const l = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return l > 0.4 ? `color-mix(in srgb, ${hex} 12%, #000)` : "#ffffff"
+}
+
 function vuetifyColors(p: Palette) {
   return {
     primary: p.primary,
@@ -123,6 +137,16 @@ export function applyBranding(vuetify: Framework, b: Branding, dark: boolean) {
   --nr-font: ${t.font_family || 'Roboto, sans-serif'};
   --nr-heading-font: ${heading || 'Roboto, sans-serif'};
   --nr-font-size: ${t.font_size || 14}px;
+  --nr-on-primary: ${onColor(p.primary)};
+  --nr-on-accent: ${onColor(p.accent)};
+  --nr-line: color-mix(in srgb, var(--nr-text) 8%, transparent);
+  --nr-line-strong: color-mix(in srgb, var(--nr-text) 14%, transparent);
+  --nr-hover: color-mix(in srgb, var(--nr-text) 5%, transparent);
+  --nr-press: color-mix(in srgb, var(--nr-text) 8%, transparent);
+  --nr-muted: color-mix(in srgb, var(--nr-text) 62%, var(--nr-bg));
+  --nr-subtle: color-mix(in srgb, var(--nr-text) 42%, var(--nr-bg));
+  --nr-glass: color-mix(in srgb, var(--nr-surface) 72%, transparent);
+  --nr-glow: color-mix(in srgb, var(--nr-primary) 35%, transparent);
 }
 html, body { background: var(--nr-bg); }
 .v-application, .v-application .text-h1, .v-application .text-h2, .v-application .text-h3,
@@ -138,9 +162,11 @@ html, body { background: var(--nr-bg); }
 }
 .v-application { font-size: var(--nr-font-size); }
 .v-application.theme--dark, .v-application.theme--light { background: var(--nr-bg) !important; color: var(--nr-text) !important; }
-.v-application .theme--dark.v-card, .v-application .theme--light.v-card,
-.v-application .theme--dark.v-sheet:not(.v-app-bar):not(.v-footer):not(.v-navigation-drawer):not(.transparent),
-.v-application .theme--light.v-sheet:not(.v-app-bar):not(.v-footer):not(.v-navigation-drawer):not(.transparent),
+.v-application .theme--dark.v-card, .v-application .theme--light.v-card {
+  background-color: var(--nr-glass) !important;
+}
+.v-application .theme--dark.v-sheet:not(.v-app-bar):not(.v-footer):not(.v-navigation-drawer):not(.transparent):not(.v-card),
+.v-application .theme--light.v-sheet:not(.v-app-bar):not(.v-footer):not(.v-navigation-drawer):not(.transparent):not(.v-card),
 .v-application .theme--dark.v-list, .v-application .theme--light.v-list,
 .v-application .theme--dark.v-data-table, .v-application .theme--light.v-data-table,
 .v-application .theme--dark.v-expansion-panels .v-expansion-panel, .v-application .theme--light.v-expansion-panels .v-expansion-panel,
@@ -150,14 +176,20 @@ html, body { background: var(--nr-bg); }
 .v-dialog .theme--dark.v-card, .v-dialog .theme--light.v-card {
   background-color: var(--nr-surface) !important;
 }
-.v-application .nr-appbar.v-app-bar { background-color: var(--nr-appbar) !important; color: var(--nr-appbar-text) !important; }
-.v-application .nr-appbar .v-btn, .v-application .nr-appbar .v-icon, .v-application .nr-appbar .nr-appbar-text { color: var(--nr-appbar-text) !important; }
-.v-application .nr-footer.v-footer { background-color: var(--nr-footer) !important; color: var(--nr-footer-text) !important; }
+.v-application .v-card > .v-list, .v-application .v-card .v-data-table,
+.v-application .v-card .v-expansion-panels .v-expansion-panel {
+  background-color: transparent !important;
+}
+.v-application .nr-appbar.v-app-bar { background-color: color-mix(in srgb, var(--nr-appbar) 72%, transparent) !important; color: var(--nr-appbar-text) !important; backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); border-bottom: 1px solid var(--nr-line) !important; }
+.v-application .nr-appbar .nr-appbar-text { color: var(--nr-appbar-text) !important; }
+.v-application .nr-footer.v-footer { background-color: transparent !important; color: var(--nr-footer-text) !important; }
 .v-application .nr-footer a { color: var(--nr-footer-text) !important; }
 .v-application .nr-drawer.v-navigation-drawer { background-color: var(--nr-drawer) !important; }
 .v-application .nr-drawer.v-navigation-drawer .v-list { background-color: transparent !important; }
+.v-application .v-btn:not(.v-btn--round):not(.v-btn--fab):not(.v-btn--icon):not(.v-btn--tile) {
+  border-radius: calc(var(--nr-radius) * 4) !important;
+}
 .v-application .v-card, .v-application .v-sheet.nr-rounded, .v-dialog, .v-menu__content,
-.v-application .v-btn:not(.v-btn--round):not(.v-btn--fab):not(.v-btn--icon),
 .v-application .v-text-field--outlined fieldset, .v-application .v-alert,
 .v-application .v-text-field--solo .v-input__slot, .v-application .v-data-table {
   border-radius: var(--nr-radius) !important;

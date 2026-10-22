@@ -12,7 +12,7 @@
         </v-tooltip>
         <v-tooltip bottom open-delay="300">
           <template v-slot:activator="{ on, attrs }">
-            <v-btn v-bind="attrs" v-on="on" @click="roomId = item.id; dialog = true" color="blue" small class="mr-2">
+            <v-btn v-bind="attrs" v-on="on" @click="roomId = item.id; dialog = true" outlined small class="mr-2">
               <v-icon small>mdi-information-outline</v-icon></v-btn>
           </template>
           <span>View more information</span>
@@ -40,7 +40,7 @@
         <i v-else>uses mux</i>
       </template>
       <template v-slot:[`item.status`]="{ item }">
-        <v-chip :color="item.running ? (item.status.includes('unhealthy') ? 'warning' : 'green') : 'red'" dark small> {{
+        <v-chip :color="item.running ? (item.status.includes('unhealthy') ? 'warning' : 'success') : 'error'" outlined small> {{
           item.status }} </v-chip>
       </template>
       <template v-slot:[`item.created`]="{ item }">
@@ -67,7 +67,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="grey" text @click="dialog = false">
+          <v-btn text @click="dialog = false">
             Close
           </v-btn>
         </v-card-actions>

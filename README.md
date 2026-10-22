@@ -22,6 +22,14 @@ Simple room management system for [n.eko](https://github.com/m1k1o/neko). Self h
   <img src="https://github.com/m1k1o/neko-rooms/raw/master/docs/neko.gif" alt="n.eko">
 </div>
 
+## Run locally (no domain, share over Tailscale)
+
+```bash
+./local/up.sh        # Windows: .\local\up.ps1
+```
+
+Builds this checkout, starts it on `http://localhost:8080` and prints the tailnet URLs. See [docs/local.md](./docs/local.md).
+
 ## Zero-knowledge installation (with HTTPS)
 
 No experience with Docker and reverse proxy? No problem! Follow these steps to set up your Neko Rooms quickly and securely:

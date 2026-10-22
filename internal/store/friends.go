@@ -24,19 +24,20 @@ type PublicUser struct {
 	ID          int64  `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	Avatar      int64  `json:"avatar"` // avatar version, 0 = none
 }
 
 func (u *User) Public() *PublicUser {
-	return &PublicUser{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+	return &PublicUser{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Avatar: u.Avatar}
 }
 
 func (s *Store) ListFriends(userID int64) ([]*Friend, error) {
 	rows, err := s.db.Query(`
-		SELECT f.user_id, f.status, f.created_at, u.id, u.username, u.display_name
+		SELECT f.user_id, f.status, f.created_at, users.id, users.username, users.display_name, `+avatarVersion+`
 		FROM friendships f
-		JOIN users u ON u.id = CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END
-		WHERE (f.user_id = ? OR f.friend_id = ?) AND u.disabled = 0
-		ORDER BY f.status, u.username`, userID, userID, userID)
+		JOIN users ON users.id = CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END
+		WHERE (f.user_id = ? OR f.friend_id = ?) AND users.disabled = 0
+		ORDER BY f.status, users.username`, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +47,7 @@ func (s *Store) ListFriends(userID int64) ([]*Friend, error) {
 	for rows.Next() {
 		var requester int64
 		f := &Friend{User: &PublicUser{}}
-		if err := rows.Scan(&requester, &f.Status, &f.CreatedAt, &f.User.ID, &f.User.Username, &f.User.DisplayName); err != nil {
+		if err := rows.Scan(&requester, &f.Status, &f.CreatedAt, &f.User.ID, &f.User.Username, &f.User.DisplayName, &f.User.Avatar); err != nil {
 			return nil, err
 		}
 		if requester == userID {
@@ -127,7 +128,7 @@ func (s *Store) RemoveFriend(a, b int64) error {
 }
 
 func (s *Store) SearchUsers(query string, limit int) ([]*PublicUser, error) {
-	rows, err := s.db.Query(`SELECT id, username, display_name FROM users WHERE disabled = 0 AND (username LIKE ? OR display_name LIKE ?) ORDER BY username LIMIT ?`,
+	rows, err := s.db.Query(`SELECT id, username, display_name, `+avatarVersion+` FROM users WHERE disabled = 0 AND (username LIKE ? OR display_name LIKE ?) ORDER BY username LIMIT ?`,
 		"%"+query+"%", "%"+query+"%", limit)
 	if err != nil {
 		return nil, err
@@ -137,7 +138,7 @@ func (s *Store) SearchUsers(query string, limit int) ([]*PublicUser, error) {
 	users := []*PublicUser{}
 	for rows.Next() {
 		u := &PublicUser{}
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Avatar); err != nil {
 			return nil, err
 		}
 		users = append(users, u)

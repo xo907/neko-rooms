@@ -1,140 +1,151 @@
 <template>
-  <v-container class="py-8" style="max-width: 1180px">
-    <v-btn text small :to="{ name: 'home' }" class="mb-4 px-1">
-      <v-icon left small>mdi-arrow-left</v-icon> All rooms
-    </v-btn>
+  <div class="nr-room-page">
+    <router-link :to="{ name: 'home' }" class="nr-back">
+      <v-icon small>mdi-arrow-left</v-icon> All rooms
+    </router-link>
 
     <div v-if="loading && !room" class="text-center py-16">
-      <v-progress-circular indeterminate color="primary" size="48" />
+      <v-progress-circular indeterminate color="primary" size="32" width="2" />
     </div>
 
-    <v-card v-else-if="error" class="pa-10 text-center">
-      <v-icon size="64" :color="errorStatus === 403 ? 'warning' : 'error'" class="mb-4">
-        {{ errorStatus === 403 ? 'mdi-lock' : 'mdi-door-closed' }}
-      </v-icon>
-      <div class="text-h5 mb-2">{{ errorStatus === 403 ? 'This room is private' : 'Room not found' }}</div>
-      <div class="text--secondary mb-6">
-        {{ errorStatus === 403 ? 'Ask the owner for an invite link, or sign in if you are one of their friends.' : 'It may have been closed or renamed.' }}
+    <div v-else-if="error" class="nr-state nr-rise">
+      <div class="nr-state-icon" :class="errorStatus === 403 ? 'is-warn' : 'is-danger'">
+        <v-icon>{{ errorStatus === 403 ? 'mdi-lock-outline' : 'mdi-door-closed' }}</v-icon>
       </div>
+      <h1 class="nr-state-title">{{ errorStatus === 403 ? 'This room is private' : 'Room not found' }}</h1>
+      <p class="nr-state-text">
+        {{ errorStatus === 403 ? 'Ask the owner for an invite link, or sign in if you are one of their friends.' : 'It may have been closed or renamed.' }}
+      </p>
       <v-btn v-if="errorStatus === 403 && !user" color="primary" depressed :to="{ name: 'login', query: { redirect: $route.fullPath } }">Sign in</v-btn>
-    </v-card>
+    </div>
 
-    <v-row v-else-if="room">
-      <v-col cols="12" md="8">
-        <v-card class="overflow-hidden">
-          <div class="nr-preview" :style="previewStyle">
-            <img v-if="showThumb" :src="thumbUrl" @error="thumbFailed = true" alt="">
-            <div v-else class="nr-preview-fallback">
-              <v-icon size="96" color="white" style="opacity: .8">mdi-play-circle-outline</v-icon>
-            </div>
-            <div class="nr-preview-overlay d-flex flex-column align-center justify-center" v-if="room.can_join">
-              <v-btn x-large color="primary" depressed :disabled="!room.running" @click="join" class="px-8">
-                <v-icon left>mdi-login-variant</v-icon>{{ room.running ? 'Join room' : 'Room is not running' }}
-              </v-btn>
-              <div v-if="room.ready" class="white--text mt-3 font-weight-medium">
-                {{ room.viewers }} {{ room.viewers === 1 ? 'person' : 'people' }} watching
-              </div>
+    <div v-else-if="room" class="nr-room-layout nr-rise">
+      <main>
+        <div ref="preview" class="nr-preview" :style="previewStyle">
+          <img v-if="showThumb" :src="thumbUrl" @error="thumbFailed = true" alt="">
+          <div v-else class="nr-preview-fallback">
+            <v-icon size="48">mdi-play-circle-outline</v-icon>
+          </div>
+          <div class="nr-preview-overlay" v-if="room.can_join">
+            <v-btn large color="primary" depressed :disabled="!room.running" @click="join" class="px-8">
+              {{ room.running ? 'Join room' : 'Room is not running' }}
+            </v-btn>
+            <div v-if="room.ready" class="nr-preview-note">
+              <span class="nr-dot" />{{ room.viewers }} {{ room.viewers === 1 ? 'person' : 'people' }} watching
             </div>
           </div>
+        </div>
 
-          <v-card-text>
-            <div class="d-flex align-start">
-              <div class="flex-grow-1">
-                <div class="d-flex align-center flex-wrap" style="gap: 6px">
-                  <h1 class="text-h5 font-weight-bold nr-heading mr-2">{{ room.title }}</h1>
-                  <v-chip v-if="room.ready" x-small color="error" label class="font-weight-bold">LIVE</v-chip>
-                  <v-chip v-else-if="room.paused" x-small color="warning" label>PAUSED</v-chip>
-                  <v-chip v-else x-small label>OFFLINE</v-chip>
-                  <v-chip x-small label outlined>
-                    <v-icon x-small left>{{ visibilityIcon }}</v-icon>{{ room.visibility }}
-                  </v-chip>
-                  <v-chip v-if="room.category" x-small label outlined>{{ room.category }}</v-chip>
-                  <v-chip v-if="room.featured" x-small label color="amber" text-color="black">
-                    <v-icon x-small left>mdi-star</v-icon>featured
-                  </v-chip>
-                  <v-chip v-if="room.hidden" x-small label color="error" outlined>hidden by moderator</v-chip>
-                </div>
-                <div class="d-flex align-center mt-2 text--secondary" v-if="room.owner">
-                  <UserAvatar :user="room.owner" :size="22" class="mr-2" />
-                  hosted by <strong class="ml-1">{{ room.owner.display_name || room.owner.username }}</strong>
-                </div>
-              </div>
-              <v-btn icon @click="share" title="Copy link">
-                <v-icon>{{ copied ? 'mdi-check' : 'mdi-share-variant' }}</v-icon>
-              </v-btn>
+        <div class="nr-room-head">
+          <div class="flex-grow-1" style="min-width: 0">
+            <h1 class="nr-room-name">{{ room.title }}</h1>
+            <div class="nr-room-tags">
+              <span v-if="room.ready" class="nr-pill-chip is-live"><span class="nr-dot" />Live</span>
+              <span v-else-if="room.paused" class="nr-pill-chip is-warn">Paused</span>
+              <span v-else class="nr-pill-chip">Offline</span>
+              <span class="nr-pill-chip"><v-icon>{{ visibilityIcon }}</v-icon>{{ room.visibility }}</span>
+              <span v-if="room.category" class="nr-pill-chip">{{ room.category }}</span>
+              <span v-if="room.featured" class="nr-pill-chip"><v-icon>mdi-star-outline</v-icon>Featured</span>
+              <span v-if="room.hidden" class="nr-pill-chip is-danger">Hidden by moderator</span>
             </div>
+            <div class="nr-room-host" v-if="room.owner">
+              <UserAvatar :user="room.owner" :size="20" />
+              <span>Hosted by <strong>{{ room.owner.display_name || room.owner.username }}</strong></span>
+            </div>
+          </div>
+          <v-btn outlined small @click="share">
+            <v-icon left small>{{ copied ? 'mdi-check' : 'mdi-link-variant' }}</v-icon>{{ copied ? 'Copied' : 'Share' }}
+          </v-btn>
+        </div>
 
-            <p v-if="room.description" class="body-1 mt-4 mb-0" style="white-space: pre-line">{{ room.description }}</p>
-          </v-card-text>
-        </v-card>
-      </v-col>
+        <p v-if="room.description" class="nr-room-desc">{{ room.description }}</p>
+      </main>
 
-      <v-col cols="12" md="4">
-        <v-card class="mb-4">
-          <v-card-title class="subtitle-1 font-weight-bold">
-            <v-icon left small>mdi-account-group</v-icon> In this room
-            <v-spacer />
-            <span class="text--secondary">{{ room.viewers }}<span v-if="room.max_connections">/{{ room.max_connections }}</span></span>
-          </v-card-title>
-          <v-list dense v-if="room.members.length">
-            <v-list-item v-for="m in room.members" :key="m">
-              <v-list-item-avatar size="28"><UserAvatar :name="m" :size="28" /></v-list-item-avatar>
-              <v-list-item-title>{{ m }}</v-list-item-title>
-              <v-list-item-action v-if="room.friends_inside.includes(m)">
-                <v-chip x-small color="accent">friend</v-chip>
-              </v-list-item-action>
-            </v-list-item>
-          </v-list>
-          <v-card-text v-else class="text--secondary">
+      <aside class="nr-room-side">
+        <section class="nr-panel">
+          <div class="nr-panel-head">
+            <span>In this room</span>
+            <span class="nr-panel-count">{{ room.viewers }}<span v-if="room.max_connections">/{{ room.max_connections }}</span></span>
+          </div>
+          <ul v-if="room.members.length" class="nr-members">
+            <li v-for="m in room.members" :key="m">
+              <UserAvatar :name="m" :src="room.avatars && room.avatars[m]" :size="26" />
+              <span class="text-truncate">{{ m }}</span>
+              <span v-if="room.friends_inside.includes(m)" class="nr-pill-chip is-live ml-auto">friend</span>
+            </li>
+          </ul>
+          <p v-else class="nr-panel-empty">
             {{ room.ready ? 'Nobody is here yet. Be the first!' : 'The room is not running right now.' }}
-          </v-card-text>
-        </v-card>
+          </p>
+        </section>
 
         <!-- owner / admin tools -->
-        <v-card v-if="room.can_manage" class="mb-4">
-          <v-card-title class="subtitle-1 font-weight-bold">
-            <v-icon left small>mdi-cog-outline</v-icon> Manage room
-          </v-card-title>
-          <v-card-text>
-            <div class="d-flex flex-wrap mb-4" style="gap: 6px">
-              <RoomActionBtn action="start" :roomId="room.id" :disabled="room.running" @done="load" />
-              <RoomActionBtn action="stop" :roomId="room.id" :disabled="!room.running && !room.paused" @done="load" />
-              <RoomActionBtn action="pause" :roomId="room.id" :disabled="!room.running" @done="load" />
-              <RoomActionBtn action="restart" :roomId="room.id" :disabled="!room.running" @done="load" />
-              <v-spacer />
-              <RoomActionBtn action="remove" :roomId="room.id" @done="$router.push({ name: 'home' })" />
-            </div>
+        <section v-if="room.can_manage" class="nr-panel">
+          <div class="nr-panel-head"><span>Manage</span></div>
+          <div class="d-flex flex-wrap mb-5" style="gap: 6px">
+            <RoomActionBtn action="start" :roomId="room.id" :disabled="room.running" @done="load" />
+            <RoomActionBtn action="stop" :roomId="room.id" :disabled="!room.running && !room.paused" @done="load" />
+            <RoomActionBtn action="pause" :roomId="room.id" :disabled="!room.running" @done="load" />
+            <RoomActionBtn action="restart" :roomId="room.id" :disabled="!room.running" @done="load" />
+            <v-spacer />
+            <RoomActionBtn action="remove" :roomId="room.id" @done="$router.push({ name: 'home' })" />
+          </div>
 
-            <div class="subtitle-2 mb-1">Invite link</div>
-            <div v-if="room.invite_code" class="d-flex align-center">
-              <v-text-field :value="invite" readonly dense outlined hide-details class="mr-2" @focus="$event.target.select()" />
-              <v-btn icon small @click="copyInvite" title="Copy"><v-icon small>{{ inviteCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon></v-btn>
-            </div>
-            <div v-else class="caption text--secondary">Invite link is disabled.</div>
-            <div class="mt-2">
-              <v-btn x-small text color="primary" @click="regenerate(false)">{{ room.invite_code ? 'New link' : 'Enable link' }}</v-btn>
-              <v-btn v-if="room.invite_code" x-small text color="error" @click="regenerate(true)">Disable</v-btn>
-            </div>
-          </v-card-text>
-        </v-card>
+          <div class="nr-label">Invite link</div>
+          <div v-if="room.invite_code" class="d-flex align-center">
+            <v-text-field :value="invite" readonly dense outlined hide-details class="mr-2" @focus="$event.target.select()" />
+            <v-btn icon small @click="copyInvite" title="Copy"><v-icon small>{{ inviteCopied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon></v-btn>
+          </div>
+          <div v-else class="nr-panel-empty pa-0">Invite link is disabled.</div>
+          <div class="mt-2">
+            <v-btn x-small text color="primary" @click="regenerate(false)">{{ room.invite_code ? 'New link' : 'Enable link' }}</v-btn>
+            <v-btn v-if="room.invite_code" x-small text color="error" @click="regenerate(true)">Disable</v-btn>
+          </div>
+        </section>
 
-        <v-card v-if="room.can_manage">
-          <v-card-title class="subtitle-1 font-weight-bold">
-            <v-icon left small>mdi-pencil-outline</v-icon> Details & visibility
-          </v-card-title>
-          <v-card-text>
-            <RoomMetaEditor :roomId="room.id" :name="room.name" :meta="meta" :moderation="isAdmin" @saved="onSaved" />
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+        <section v-if="room.can_manage" class="nr-panel">
+          <div class="nr-panel-head"><span>Details & visibility</span></div>
+          <RoomMetaEditor :roomId="room.id" :name="room.name" :meta="meta" :moderation="isAdmin" @saved="onSaved" />
+        </section>
+      </aside>
+    </div>
+  </div>
 </template>
 
 <style lang="scss" scoped>
+.nr-room-page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 28px 16px 64px;
+}
+.nr-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 20px;
+  color: var(--nr-muted) !important;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color .18s;
+  .v-icon { color: inherit !important; }
+  &:hover { color: var(--nr-text) !important; }
+}
+.nr-room-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+}
+@media (min-width: 1024px) {
+  .nr-room-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+}
 .nr-preview {
   position: relative;
   aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: calc(var(--nr-radius) * 1.4);
+  border: 1px solid var(--nr-line);
+  box-shadow: 0 40px 100px -40px rgba(0, 0, 0, .8);
   img {
     position: absolute;
     inset: 0;
@@ -149,13 +160,134 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  .v-icon { color: color-mix(in srgb, var(--nr-text) 30%, transparent) !important; }
 }
 .nr-preview-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, .35);
-  opacity: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: radial-gradient(60% 60% at 50% 50%, rgba(0, 0, 0, .65), rgba(0, 0, 0, .3));
+  backdrop-filter: blur(3px);
 }
+.nr-preview-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(8, 8, 10, .55);
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, .9);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.nr-room-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 24px;
+}
+.nr-room-name {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0 0 12px;
+}
+.nr-room-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  .nr-pill-chip { text-transform: capitalize; }
+}
+.nr-room-host {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--nr-muted);
+  strong { color: var(--nr-text); font-weight: 600; }
+}
+.nr-room-desc {
+  margin: 20px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--nr-line);
+  color: var(--nr-muted);
+  font-size: 15px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+.nr-room-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.nr-panel {
+  padding: 18px;
+  border-radius: calc(var(--nr-radius) * 1.3);
+  border: 1px solid var(--nr-line);
+  background: var(--nr-glass);
+  backdrop-filter: blur(14px);
+}
+.nr-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.nr-panel-count { color: var(--nr-subtle); font-weight: 500; }
+.nr-panel-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--nr-muted);
+}
+.nr-label {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nr-muted);
+}
+.nr-members {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    font-size: 13.5px;
+  }
+}
+.nr-state {
+  max-width: 440px;
+  margin: 48px auto;
+  text-align: center;
+}
+.nr-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--nr-line);
+  background: var(--nr-hover);
+  &.is-warn .v-icon { color: #fbbf24 !important; }
+  &.is-danger .v-icon { color: #f87171 !important; }
+}
+.nr-state-title { font-size: 1.5rem; font-weight: 600; margin: 0 0 8px; }
+.nr-state-text { color: var(--nr-muted); margin: 0 0 24px; line-height: 1.6; }
 </style>
 
 <script lang="ts">
@@ -213,7 +345,7 @@ export default class RoomPage extends Vue {
   }
 
   get previewStyle() {
-    return { background: 'linear-gradient(135deg, var(--nr-primary), var(--nr-accent))' }
+    return { background: 'radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--nr-primary) 18%, transparent), transparent 60%), linear-gradient(135deg, var(--nr-surface), var(--nr-bg))' }
   }
 
   get visibilityIcon() {
@@ -242,7 +374,13 @@ export default class RoomPage extends Vue {
   }
 
   join() {
-    if (this.room) joinRoom(this, this.room.name, this.inviteCode || undefined)
+    if (!this.room) return
+    joinRoom(this, this.room.name, {
+      invite: this.inviteCode || undefined,
+      room: this.room,
+      from: this.$refs.preview as Element,
+      image: this.showThumb ? this.thumbUrl : '',
+    })
   }
 
   async share() {

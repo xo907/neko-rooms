@@ -6,10 +6,9 @@
           v-bind="attrs"
           v-on="on"
           :loading="loading"
-          color="info"
-          dark
+          outlined
         >
-          + Quick room
+          <v-icon left small>mdi-lightning-bolt-outline</v-icon>Quick room
         </v-btn>
       </template>
 
@@ -35,7 +34,7 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="grey" text @click="dialog = false">
+          <v-btn text @click="dialog = false">
             Close
           </v-btn>
         </v-card-actions>

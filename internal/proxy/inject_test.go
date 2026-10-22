@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -74,5 +75,41 @@ func TestInjectHTML(t *testing.T) {
 	out = string(p.injectHTML([]byte(page), "Movie night"))
 	if strings.Contains(out, "data-nr-branded") || strings.Contains(out, "!important") || !strings.Contains(out, "<title>n.eko</title>") {
 		t.Error("expected no logo, color or title changes")
+	}
+}
+
+func TestInjectBrandingNoCache(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	bm, err := branding.New(s, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req, _ := http.NewRequest("GET", "/room/test/", nil)
+	req.Header.Set("Accept", "text/html")
+	res := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type":  {"text/html; charset=utf-8"},
+			"Last-Modified": {"Wed, 30 Sep 2026 12:34:04 GMT"},
+			"Etag":          {`"abc"`},
+		},
+		Body:    io.NopCloser(strings.NewReader(`<html><head></head><body></body></html>`)),
+		Request: req,
+	}
+
+	p := &ProxyManagerCtx{branding: bm, loginURL: "/"}
+	if err := p.injectBranding(res, "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	// room pages must not be cached, branding changes show up right away
+	if res.Header.Get("Cache-Control") != "no-cache" || res.Header.Get("Last-Modified") != "" || res.Header.Get("ETag") != "" {
+		t.Errorf("unexpected cache headers: %v", res.Header)
 	}
 }

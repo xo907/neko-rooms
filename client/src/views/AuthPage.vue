@@ -1,13 +1,13 @@
 <template>
   <div class="nr-auth" :style="pageStyle">
     <div class="nr-auth-inner" :class="'nr-auth--' + (login.position || 'center')">
-      <v-card class="nr-auth-card pa-6 pa-sm-8" :style="cardStyle" elevation="12">
-        <router-link to="/" class="d-flex flex-column align-center text-decoration-none mb-6">
-          <img v-if="login.show_logo && logo" :src="logo" :alt="branding.app_name" class="nr-auth-logo mb-3">
-          <div class="text-h5 font-weight-bold nr-heading" style="color: var(--nr-text)">{{ branding.app_name }}</div>
+      <v-card class="nr-auth-card nr-rise pa-7 pa-sm-9" :style="cardStyle">
+        <router-link to="/" class="nr-auth-brand mb-8">
+          <img v-if="login.show_logo && logo" :src="logo" :alt="branding.app_name" class="nr-auth-logo">
+          <span>{{ branding.app_name }}</span>
         </router-link>
 
-        <div class="text-h6 text-center mb-1">{{ heading }}</div>
+        <h1 class="nr-auth-heading nr-display mb-2">{{ heading }}</h1>
         <p v-if="message" class="text-center text--secondary mb-6" style="white-space: pre-line">{{ message }}</p>
         <div v-else class="mb-6" />
 
@@ -64,7 +64,7 @@
             autocomplete="new-password"
           />
 
-          <v-btn type="submit" color="primary" block x-large depressed :loading="loading" class="mt-2">
+          <v-btn type="submit" color="primary" block large depressed :loading="loading" class="mt-2">
             {{ mode === 'login' ? 'Sign in' : (mode === 'setup' ? 'Create admin account' : 'Create account') }}
           </v-btn>
         </v-form>
@@ -105,11 +105,33 @@
 }
 .nr-auth-card {
   width: 100%;
-  max-width: 430px;
+  max-width: 420px;
+  border-radius: calc(var(--nr-radius) * 1.6) !important;
+  box-shadow: 0 40px 100px -40px rgba(0, 0, 0, .8) !important;
+}
+.nr-auth-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--nr-muted) !important;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  transition: color .18s;
+  &:hover { color: var(--nr-text) !important; }
 }
 .nr-auth-logo {
-  max-height: 64px;
-  max-width: 220px;
+  max-height: 28px;
+  max-width: 160px;
+  border-radius: 8px;
+}
+.nr-auth-heading {
+  font-size: 2.2rem;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--nr-text);
 }
 </style>
 
@@ -169,12 +191,10 @@ export default class AuthPage extends Vue {
 
   get pageStyle() {
     const style: Record<string, string> = {
-      backgroundColor: this.login.background_color || 'var(--nr-bg)',
+      backgroundColor: this.login.background_color || 'transparent',
     }
     if (this.login.background_image) {
       style.backgroundImage = `url("${this.login.background_image.replace(/"/g, '')}")`
-    } else {
-      style.backgroundImage = 'radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--nr-primary) 35%, transparent), transparent 50%), radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--nr-accent) 30%, transparent), transparent 50%)'
     }
     return style
   }

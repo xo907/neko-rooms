@@ -1,72 +1,75 @@
 <template>
-  <v-card class="nr-room-card" :class="{ 'nr-room-card--offline': !room.ready }" @click="open" :ripple="false">
-    <div class="nr-thumb" :style="thumbStyle">
+  <article
+    class="nr-room-card"
+    :class="{ 'nr-room-card--offline': !room.ready, 'nr-room-card--compact': compact }"
+    tabindex="0"
+    role="link"
+    :aria-label="room.title"
+    @click="open"
+    @keydown.enter="open"
+    @mousemove="spot"
+  >
+    <div ref="thumb" class="nr-thumb" :style="thumbStyle">
       <img v-if="showThumb" :src="thumbUrl" @error="thumbFailed = true" alt="" class="nr-thumb-img">
       <div v-else class="nr-thumb-fallback">
-        <v-icon size="54" color="white" style="opacity: .85">{{ categoryIcon }}</v-icon>
+        <v-icon size="34">{{ categoryIcon }}</v-icon>
       </div>
 
       <div class="nr-thumb-shade" />
 
-      <div class="nr-thumb-top d-flex align-center">
-        <v-chip v-if="room.ready" x-small color="error" class="font-weight-bold mr-1 px-2" label>
-          <span class="nr-live-dot" /> LIVE
-        </v-chip>
-        <v-chip v-else-if="room.paused" x-small color="warning" label class="px-2">PAUSED</v-chip>
-        <v-chip v-else x-small color="grey darken-2" label class="px-2" dark>OFFLINE</v-chip>
-        <v-chip v-if="room.ready" x-small label class="px-2 nr-chip-dark" dark>
-          <v-icon x-small left>mdi-eye</v-icon>{{ room.viewers }}
-        </v-chip>
-        <v-spacer />
-        <v-icon v-if="room.featured" small color="amber" class="mr-1">mdi-star</v-icon>
+      <div class="nr-thumb-top">
+        <span v-if="room.ready" class="nr-glass-chip nr-glass-chip--live"><span class="nr-live-dot" />Live</span>
+        <span v-else-if="room.paused" class="nr-glass-chip">Paused</span>
+        <span v-else class="nr-glass-chip">Offline</span>
+        <span v-if="room.ready" class="nr-glass-chip">
+          <v-icon x-small>mdi-eye-outline</v-icon>{{ room.viewers }}
+        </span>
+        <span class="flex-grow-1" />
+        <span v-if="room.featured" class="nr-glass-chip nr-glass-chip--icon" title="Featured"><v-icon x-small>mdi-star</v-icon></span>
         <v-tooltip bottom>
           <template v-slot:activator="{ on, attrs }">
-            <v-icon v-bind="attrs" v-on="on" small color="white">{{ visibilityIcon }}</v-icon>
+            <span v-bind="attrs" v-on="on" class="nr-glass-chip nr-glass-chip--icon"><v-icon x-small>{{ visibilityIcon }}</v-icon></span>
           </template>
           <span>{{ visibilityLabel }}</span>
         </v-tooltip>
       </div>
 
-      <div v-if="room.friends_inside.length" class="nr-thumb-bottom d-flex align-center">
+      <div v-if="room.friends_inside.length" class="nr-thumb-bottom">
         <div class="nr-stack mr-2">
-          <UserAvatar v-for="n in room.friends_inside.slice(0, 3)" :key="'f' + n" :name="n" :size="22" ring />
+          <UserAvatar v-for="n in room.friends_inside.slice(0, 3)" :key="'f' + n" :name="n" :src="avatarOf(n)" :size="20" ring />
         </div>
-        <span class="caption white--text text-truncate">
+        <span class="text-truncate">
           {{ room.friends_inside.slice(0, 2).join(', ') }}<span v-if="room.friends_inside.length > 2"> +{{ room.friends_inside.length - 2 }}</span>
           {{ room.friends_inside.length === 1 ? 'is' : 'are' }} here
         </span>
       </div>
     </div>
 
-    <div class="pa-3">
-      <div class="d-flex align-start">
-        <div class="flex-grow-1" style="min-width: 0">
-          <div class="nr-room-title text-truncate">{{ room.title }}</div>
-          <div class="caption text--secondary d-flex align-center mt-1">
-            <template v-if="room.owner">
-              <UserAvatar :user="room.owner" :size="18" class="mr-1" />
-              <span class="text-truncate">{{ room.owner.display_name || room.owner.username }}</span>
-            </template>
-            <span v-else class="text-truncate">/{{ room.name }}</span>
-            <template v-if="room.category">
-              <span class="mx-1">·</span>
-              <span class="text-truncate">{{ room.category }}</span>
-            </template>
-          </div>
-        </div>
+    <div class="nr-body">
+      <div class="nr-room-title text-truncate">{{ room.title }}</div>
+      <div class="nr-room-meta">
+        <template v-if="room.owner">
+          <UserAvatar :user="room.owner" :size="16" class="mr-1" />
+          <span class="text-truncate">{{ room.owner.display_name || room.owner.username }}</span>
+        </template>
+        <span v-else class="text-truncate">/{{ room.name }}</span>
+        <template v-if="room.category">
+          <span class="nr-sep">·</span>
+          <span class="text-truncate">{{ room.category }}</span>
+        </template>
       </div>
 
-      <div v-if="!compact && room.description" class="body-2 text--secondary mt-2 nr-clamp">{{ room.description }}</div>
+      <div v-if="!compact && room.description" class="nr-room-desc">{{ room.description }}</div>
 
-      <div class="d-flex align-center mt-3">
+      <div class="nr-room-foot">
         <div v-if="room.members.length" class="nr-stack">
-          <UserAvatar v-for="m in room.members.slice(0, 5)" :key="'m' + m" :name="m" :size="26" ring tooltip />
-          <span v-if="room.members.length > 5" class="caption ml-2 text--secondary">+{{ room.members.length - 5 }}</span>
+          <UserAvatar v-for="m in room.members.slice(0, 5)" :key="'m' + m" :name="m" :src="avatarOf(m)" :size="24" ring tooltip />
+          <span v-if="room.members.length > 5" class="nr-more">+{{ room.members.length - 5 }}</span>
         </div>
-        <span v-else class="caption text--secondary">{{ room.ready ? 'Nobody here yet' : 'Not running' }}</span>
-        <v-spacer />
-        <v-btn v-if="room.can_manage" icon small :to="{ name: 'room', params: { name: room.name } }" @click.stop>
-          <v-icon small>mdi-cog-outline</v-icon>
+        <span v-else class="nr-empty-note">{{ room.ready ? 'Nobody here yet' : 'Not running' }}</span>
+        <span class="flex-grow-1" />
+        <v-btn v-if="room.can_manage" icon small class="nr-manage" :to="{ name: 'room', params: { name: room.name } }" @click.stop title="Manage room">
+          <v-icon small>mdi-tune-variant</v-icon>
         </v-btn>
         <v-btn
           v-if="room.can_join"
@@ -74,30 +77,58 @@
           depressed
           small
           :disabled="!room.running"
-          @click.stop="$emit('join', room)"
+          @click.stop="$emit('join', room, { from: $refs.thumb, image: showThumb ? thumbUrl : '' })"
         >
           Join
         </v-btn>
       </div>
     </div>
-  </v-card>
+  </article>
 </template>
 
 <style lang="scss" scoped>
 .nr-room-card {
-  overflow: hidden;
-  transition: transform .15s ease, box-shadow .15s ease;
+  --mx: 50%;
+  --my: 50%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: calc(var(--nr-radius) * 1.3);
+  border: 1px solid var(--nr-line);
+  background: var(--nr-glass);
+  backdrop-filter: blur(14px);
   cursor: pointer;
-  &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, .35) !important;
+  outline: none;
+  overflow: hidden;
+  transition: transform .32s cubic-bezier(.2, .8, .2, 1), border-color .32s, box-shadow .32s;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(240px circle at var(--mx) var(--my), color-mix(in srgb, var(--nr-primary) 14%, transparent), transparent 65%);
+    transition: opacity .32s;
   }
+  &:hover, &:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--nr-line-strong);
+    box-shadow: 0 24px 60px -30px rgba(0, 0, 0, .7);
+    &::after { opacity: 1; }
+    .nr-thumb-img { transform: scale(1.03); }
+  }
+  &:focus-visible { border-color: var(--nr-primary); }
 }
-.nr-room-card--offline .nr-thumb { filter: grayscale(.6) brightness(.8); }
+.nr-room-card--offline .nr-thumb { filter: grayscale(.7) brightness(.75); }
+
 .nr-thumb {
   position: relative;
   aspect-ratio: 16 / 9;
   overflow: hidden;
+  border-radius: var(--nr-radius);
+  box-shadow: inset 0 0 0 1px var(--nr-line);
 }
 .nr-thumb-img {
   position: absolute;
@@ -105,6 +136,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform .6s cubic-bezier(.2, .8, .2, 1);
 }
 .nr-thumb-fallback {
   position: absolute;
@@ -112,49 +144,106 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  .v-icon { color: color-mix(in srgb, var(--nr-text) 35%, transparent) !important; }
 }
 .nr-thumb-shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 60%, rgba(0,0,0,.6) 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, .35) 0%, transparent 30%, transparent 60%, rgba(0, 0, 0, .55) 100%);
+  pointer-events: none;
 }
 .nr-thumb-top, .nr-thumb-bottom {
   position: absolute;
   left: 8px;
   right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 .nr-thumb-top { top: 8px; }
-.nr-thumb-bottom { bottom: 8px; }
-.nr-chip-dark { background: rgba(0, 0, 0, .55) !important; }
+.nr-thumb-bottom {
+  bottom: 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+}
+.nr-glass-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(8, 8, 10, .55);
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1);
+  color: rgba(255, 255, 255, .92);
+  font-size: 11px;
+  font-weight: 600;
+  .v-icon { color: inherit !important; font-size: 12px !important; }
+  &.nr-glass-chip--icon { width: 22px; padding: 0; justify-content: center; }
+  &.nr-glass-chip--live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nr-primary) 45%, transparent); }
+}
 .nr-live-dot {
-  display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: white;
-  margin-right: 4px;
-  animation: nr-pulse 1.6s infinite;
+  background: var(--nr-primary);
+  box-shadow: 0 0 8px var(--nr-primary);
+  animation: nr-pulse 1.8s ease-in-out infinite;
 }
-@keyframes nr-pulse {
-  0% { opacity: 1; }
-  50% { opacity: .3; }
-  100% { opacity: 1; }
+
+.nr-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 12px 8px 6px;
 }
 .nr-room-title {
-  font-weight: 700;
-  font-size: 1.05rem;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--nr-text);
 }
-.nr-clamp {
+.nr-room-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--nr-muted);
+}
+.nr-sep { margin: 0 6px; color: var(--nr-subtle); }
+.nr-room-desc {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--nr-muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.nr-room-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 14px;
+}
 .nr-stack {
   display: flex;
   align-items: center;
-  > * + * { margin-left: -4px; }
+  > * + * { margin-left: -6px; }
 }
+.nr-more, .nr-empty-note {
+  font-size: 12px;
+  color: var(--nr-subtle);
+}
+.nr-more { margin-left: 8px; }
+.nr-manage .v-icon { color: var(--nr-muted) !important; }
 </style>
 
 <script lang="ts">
@@ -162,15 +251,9 @@ import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
 import { api, Room } from '@/api-ext'
 import UserAvatar from '@/components/community/UserAvatar.vue'
 
-const GRADIENTS = [
-  ['#8c5cff', '#ff5ca8'],
-  ['#3ec5ff', '#8c5cff'],
-  ['#ff9a5c', '#ff5c8a'],
-  ['#2ee59d', '#3ec5ff'],
-  ['#5c7cff', '#00c2a8'],
-  ['#e056fd', '#686de0'],
-  ['#f6d365', '#fda085'],
-]
+// subtle hue shifts, so placeholder thumbnails are told apart without
+// turning the grid into a rainbow
+const TINTS = [0, 22, 40, 60, 80]
 
 const CATEGORY_ICONS: Record<string, string> = {
   movies: 'mdi-movie-open-outline',
@@ -212,8 +295,19 @@ export default class RoomCard extends Vue {
   get thumbStyle() {
     let h = 0
     for (let i = 0; i < this.room.name.length; i++) h = (h * 31 + this.room.name.charCodeAt(i)) >>> 0
-    const [a, b] = GRADIENTS[h % GRADIENTS.length]
-    return { background: `linear-gradient(135deg, ${a}, ${b})` }
+    const tint = TINTS[h % TINTS.length]
+    const angle = 120 + (h % 5) * 30
+    return {
+      background: `radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--nr-primary) ${10 + tint / 4}%, transparent), transparent 60%),
+        linear-gradient(${angle}deg, color-mix(in srgb, var(--nr-surface) 94%, var(--nr-text)), var(--nr-bg))`,
+    }
+  }
+
+  spot(e: MouseEvent) {
+    const el = e.currentTarget as HTMLElement
+    const r = el.getBoundingClientRect()
+    el.style.setProperty('--mx', `${e.clientX - r.left}px`)
+    el.style.setProperty('--my', `${e.clientY - r.top}px`)
   }
 
   get categoryIcon() {
@@ -234,6 +328,10 @@ export default class RoomCard extends Vue {
       case 'friends': return 'Friends only'
       default: return 'Private, invite only'
     }
+  }
+
+  avatarOf(name: string): string | undefined {
+    return this.room.avatars ? this.room.avatars[name] : undefined
   }
 
   open() {

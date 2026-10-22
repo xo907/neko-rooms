@@ -31,6 +31,22 @@ const light = (primary: string, accent: string): Palette => ({
 
 export const presets: ThemePreset[] = [
   {
+    name: 'XO Minimal',
+    mode: 'dark',
+    dark: {
+      primary: '#2dd4bf', secondary: '#18181b', accent: '#5eead4', error: '#f87171', info: '#7dd3fc', success: '#4ade80', warning: '#fbbf24',
+      background: '#060607', surface: '#0e0e11', text: '#f4f4f5', app_bar: '#060607', app_bar_text: '#f4f4f5', footer: '#060607', footer_text: '#6b6b74', drawer: '#0a0a0c',
+    },
+    light: {
+      ...light('#0d9488', '#14b8a6'),
+      secondary: '#f4f4f5', background: '#fafafa', text: '#09090b', app_bar: '#fafafa', app_bar_text: '#09090b', footer: '#fafafa', footer_text: '#71717a',
+    },
+    font_family: 'Geist, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif',
+    font_url: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap',
+    border_radius: 14,
+    button_uppercase: false,
+  },
+  {
     name: 'Night Party',
     mode: 'dark',
     dark: {

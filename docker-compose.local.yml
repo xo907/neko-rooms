@@ -1,0 +1,47 @@
+# Local / tailnet setup: no domain, no reverse proxy, no TLS.
+#
+# Start it with ./local/up.sh (Linux, macOS, WSL) or .\local\up.ps1 (Windows),
+# which fill in .env.local for you. See docs/local.md.
+#
+# Room links are relative (NEKO_ROOMS_INSTANCE_URL is left unset), so the
+# site works on whatever address you open it on: http://localhost:8080,
+# your LAN IP, the tailscale IP or the MagicDNS name.
+
+name: "neko-rooms-local"
+
+networks:
+  default:
+    attachable: true
+    name: "neko-rooms-local-net"
+
+services:
+  neko-rooms:
+    # built by local/build.sh (or: docker build -t neko-rooms:local .)
+    image: "neko-rooms:local"
+    container_name: "neko-rooms-local"
+    restart: "unless-stopped"
+    environment:
+      - "TZ=${TZ:-UTC}"
+      - "NEKO_ROOMS_INSTANCE_NAME=neko-rooms-local"
+      - "NEKO_ROOMS_INSTANCE_NETWORK=neko-rooms-local-net"
+      - "NEKO_ROOMS_TRAEFIK_ENABLED=false"
+      - "NEKO_ROOMS_PATH_PREFIX=/room/"
+      # one UDP + TCP port per room, published on the host
+      - "NEKO_ROOMS_MUX=true"
+      - "NEKO_ROOMS_EPR=${NEKO_ROOMS_EPR:-59000-59049}"
+      # IP that browsers use to reach the room video streams (WebRTC),
+      # set to your tailscale IP so every device on the tailnet can watch
+      - "NEKO_ROOMS_NAT1TO1=${NEKO_ROOMS_NAT1TO1:?set NEKO_ROOMS_NAT1TO1 to your tailscale IP}"
+      # first admin account, created on first start only
+      # leave the password empty to get a one-time setup token in the logs
+      - "NEKO_ROOMS_ADMIN_USERNAME=${NEKO_ROOMS_ADMIN_USERNAME:-admin}"
+      - "NEKO_ROOMS_ADMIN_PASSWORD=${NEKO_ROOMS_ADMIN_PASSWORD:-}"
+    ports:
+      - "${NEKO_ROOMS_PORT:-8080}:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "neko-rooms-local-data:/data" # users, branding & settings
+
+volumes:
+  neko-rooms-local-data:
+    name: "neko-rooms-local-data"

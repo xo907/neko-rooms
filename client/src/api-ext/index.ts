@@ -24,6 +24,7 @@ export interface User {
   created_at: string
   updated_at: string
   last_login_at: string | null
+  avatar: number // avatar version, 0 = none
   room_count?: number
 }
 
@@ -31,6 +32,7 @@ export interface PublicUser {
   id: number
   username: string
   display_name: string
+  avatar?: number // avatar version, 0 = none
 }
 
 export interface PublicPolicy {
@@ -86,6 +88,7 @@ export interface Room {
   viewers: number
   members: string[]
   friends_inside: string[]
+  avatars?: Record<string, string> // member name -> avatar path, relative to the api root
   max_connections: number
   has_thumbnail: boolean
   created_at: string
@@ -303,6 +306,14 @@ export const api = {
 
   // account
   updateAccount: (data: { display_name?: string; email?: string }) => http.put<User>('/account', data).then(r => r.data),
+  uploadAvatar: (image: Blob) => {
+    const form = new FormData()
+    form.append('file', image, 'avatar')
+    return http.post<User>('/account/avatar', form).then(r => r.data)
+  },
+  deleteAvatar: () => http.delete<User>('/account/avatar').then(r => r.data),
+  avatarUrl: (u: { id: number; avatar?: number }) => u.avatar ? basePath + '/api/public/avatars/' + u.id + '?v=' + u.avatar : '',
+  apiUrl: (path: string) => basePath + '/api/' + path,
   changePassword: (current: string, next: string) =>
     // eslint-disable-next-line
     http.post('/account/password', { current_password: current, new_password: next }),
@@ -337,6 +348,7 @@ export const api = {
   createUser: (data: Partial<User> & { password: string }) => http.post<User>('/admin/users', data).then(r => r.data),
   updateUser: (id: number, data: Partial<User> & { password?: string }) => http.put<User>('/admin/users/' + id, data).then(r => r.data),
   deleteUser: (id: number) => http.delete('/admin/users/' + id),
+  deleteUserAvatar: (id: number) => http.delete('/admin/users/' + id + '/avatar'),
   userSessions: (id: number) => http.get<Session[]>('/admin/users/' + id + '/sessions').then(r => r.data),
   revokeUserSessions: (id: number) => http.delete('/admin/users/' + id + '/sessions'),
   adminRooms: () => http.get<Room[]>('/admin/rooms').then(r => r.data),
