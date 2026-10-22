@@ -53,7 +53,9 @@ Users, branding and settings live in the `neko-rooms-local-data` docker volume.
 
 ## Raspberry Pi
 
-One command on Raspberry Pi OS (64-bit), Pi 4 or 5:
+One command on a 64-bit Raspberry Pi OS or Debian, Pi 4 or 5. Run it as a normal
+user with sudo, or as root (plain Debian often has no sudo). On a minimal
+Debian without curl, `apt install curl` first:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xo907/neko-rooms/master/local/pi-install.sh | bash
