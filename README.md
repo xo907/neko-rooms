@@ -30,6 +30,12 @@ Simple room management system for [n.eko](https://github.com/m1k1o/neko). Self h
 
 Builds this checkout, starts it on `http://localhost:8188` and prints the tailnet URLs. See [docs/local.md](./docs/local.md).
 
+## Android app
+
+**WatchParty** is a native Android app for any neko-rooms server: rooms list, sign in, friends, profile photos and a native room player with chat, remote control, touch input and keyboard.
+
+Download `WatchParty.apk` from the [latest release](https://github.com/xo907/neko-rooms/releases?q=android-v&expanded=true) on your phone, open it to install, then enter your server's address. Source in [android/](./android), built by GitHub Actions; push a tag like `android-v0.2.0` to publish a new release.
+
 ## Run on a VPS (public IP, no domain)
 
 On a server with Docker and git, open it to everyone on its public IP:
