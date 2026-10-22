@@ -337,6 +337,11 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
         if (live != null) {
             SocialBar(
                 ls = ls,
+                isHost = st.isHost,
+                onPass = { h ->
+                    client.releaseControl()
+                    live?.hand(false, h.id)
+                },
                 reactOpen = reactOpen,
                 onToggleReact = { reactOpen = !reactOpen; poke++ },
                 onReact = { live?.react(it); poke++ },
@@ -345,28 +350,9 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
             )
         }
     }
+    // only reactions pass over the video, the rest stays in the bars
     val stageOverlays = @Composable {
-        if (live != null) {
-            FlyingReactions(live, Modifier.fillMaxSize())
-            Column(
-                Modifier.padding(start = 10.dp, top = if (landscape && controls) 120.dp else 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                if (ls.playing.isNotBlank()) OverlayChip("Now playing", ls.playing)
-                ls.hands.forEachIndexed { i, h ->
-                    val mine = h.id == ls.me?.id
-                    OverlayChip(
-                        "✋",
-                        h.name + (if (mine) " (you)" else "") + (if (i == 0 && !st.isHost) " is next" else ""),
-                        action = if (i == 0 && st.isHost && !mine) "Pass control" else null,
-                        onAction = {
-                            client.releaseControl()
-                            live?.hand(false, h.id)
-                        },
-                    )
-                }
-            }
-        }
+        if (live != null) FlyingReactions(live, Modifier.fillMaxSize())
     }
     val chat = @Composable { modifier: Modifier ->
         ChatPanel(st, photoOf, onSend = client::sendChat, onMembers = { members = true }, onClose = { setChat(false) }, modifier = modifier)
@@ -391,6 +377,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                                 Column(Modifier.weight(1f)) {
                                     Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     HostLine(st)
+                                    PlayingLine(ls.playing)
                                 }
                                 ChatButton(sideChat, unread, Color.White) { setChat(!sideChat) }
                             }
@@ -435,6 +422,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                     Column(Modifier.weight(1f)) {
                         Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         HostLine(st)
+                        PlayingLine(ls.playing)
                     }
                     if (st.online.isNotEmpty()) {
                         TextButton(onClick = { members = true }) {
@@ -502,6 +490,8 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
 @Composable
 private fun SocialBar(
     ls: LiveState,
+    isHost: Boolean,
+    onPass: (app.rooms.neko.Hand) -> Unit,
     reactOpen: Boolean,
     onToggleReact: () -> Unit,
     onReact: (String) -> Unit,
@@ -524,6 +514,17 @@ private fun SocialBar(
             SocialPill("😀", "React", onClick = onToggleReact)
             SocialPill("✋", if (ls.handUp) "Lower hand" else "Raise hand", active = ls.handUp, badge = ls.hands.size, onClick = onHand)
             SocialPill("▶", "Up next", badge = ls.queue.size, onClick = onQueue)
+            ls.hands.firstOrNull()?.let { h ->
+                val mine = h.id == ls.me?.id
+                val more = if (ls.hands.size > 1) " · +${ls.hands.size - 1}" else ""
+                OverlayChip(
+                    "",
+                    (if (mine) "You are next" else "${h.name} is next") + more,
+                    action = if (isHost && !mine) "Pass control" else null,
+                    onAction = { onPass(h) },
+                    dark = false,
+                )
+            }
         }
     }
 }
@@ -549,18 +550,32 @@ private fun SocialPill(icon: String, label: String, active: Boolean = false, bad
 }
 
 @Composable
-private fun OverlayChip(label: String, text: String, action: String? = null, onAction: () -> Unit = {}) {
+private fun PlayingLine(title: String) {
+    if (title.isBlank()) return
+    Text(
+        "▶ $title",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
+private fun OverlayChip(label: String, text: String, action: String? = null, onAction: () -> Unit = {}, dark: Boolean = true) {
     Row(
         Modifier
             .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.6f))
+            .background(if (dark) Color.Black.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceContainerHigh)
             .padding(start = 12.dp, end = if (action != null) 4.dp else 12.dp, top = 4.dp, bottom = 4.dp)
             .widthIn(max = 320.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.width(6.dp))
-        Text(text, color = Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (label.isNotEmpty()) {
+            Text(label, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(text, color = if (dark) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         if (action != null) {
             Spacer(Modifier.width(6.dp))
             Surface(onClick = onAction, shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary) {

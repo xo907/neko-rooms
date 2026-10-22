@@ -25,6 +25,7 @@ type liveRequest struct {
 	Name   string `json:"name"`
 
 	Emoji  string `json:"emoji"`
+	Via    string `json:"via"`
 	Up     bool   `json:"up"`
 	Target string `json:"target"`
 	URL    string `json:"url"`
@@ -108,7 +109,7 @@ func (manager *ApiManagerCtx) liveAction(w http.ResponseWriter, r *http.Request)
 	id, _ := strconv.Atoi(chi.URLParam(r, "itemId"))
 	switch chi.URLParam(r, "action") {
 	case "react":
-		err = manager.community.React(v, req.Emoji)
+		err = manager.community.React(v, req.Emoji, req.Via)
 	case "hand":
 		err = manager.community.Hand(v, req.Up, req.Target)
 	case "queue":
