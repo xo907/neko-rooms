@@ -67,4 +67,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/android-v')
         uses: softprops/action-gh-release@v2
         with:
+          name: WatchParty ${{ env.VERSION_NAME }}
           files: WatchParty.apk
+          prerelease: ${{ startsWith(github.ref, 'refs/tags/android-v0.') }}
+          body: |
+            WatchParty for Android, version ${{ env.VERSION_NAME }}.
+
+            Download `WatchParty.apk` below on your phone and open it to install
+            (allow installing apps from your browser if Android asks).
