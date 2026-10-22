@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- the logo's X and O, scaled into the adaptive icon safe zone -->
+<!-- the logo's X and O, scaled into the adaptive icon safe zone. With the
+     square stroke caps they span x 13 to 114, so they are already centred -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -10,7 +11,7 @@
         android:pivotY="64"
         android:scaleX="0.62"
         android:scaleY="0.62"
-        android:translateX="-4">
+        android:translateX="0.3">
         <path
             android:pathData="M22,41L54,87M54,41L22,87"
             android:strokeWidth="13"

@@ -5,20 +5,29 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.SurfaceTexture
+import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -43,7 +52,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.automirrored.outlined.VolumeOff
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Keyboard
@@ -51,9 +63,10 @@ import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PanTool
 import androidx.compose.material.icons.outlined.TouchApp
-import androidx.compose.material.icons.automirrored.outlined.VolumeOff
-import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.ZoomOutMap
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -71,17 +84,25 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -89,6 +110,9 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextRange
@@ -113,10 +137,14 @@ import app.rooms.neko.Phase
 import app.rooms.neko.RoomState
 import app.rooms.neko.WebRtc
 import kotlinx.coroutines.delay
-import org.webrtc.RendererCommon
-import org.webrtc.SurfaceViewRenderer
+import org.webrtc.EglBase
+import org.webrtc.EglRenderer
+import org.webrtc.GlRectDrawer
 import org.webrtc.VideoTrack
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 
 @Composable
@@ -124,6 +152,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val view = LocalView.current
+    val focusManager = LocalFocusManager.current
     remember { WebRtc.init(context) }
     val client = remember { NekoClient(WatchPartyApp.instance.http, WatchPartyApp.instance.cookies) }
     val st by client.state.collectAsState()
@@ -132,13 +161,25 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     var joinError by remember { mutableStateOf<String?>(null) }
     var touchPref by remember { mutableStateOf(model.prefs.touchInput) }
     var keyboard by remember { mutableStateOf(false) }
-    var showChat by remember { mutableStateOf(true) }
     var controls by remember { mutableStateOf(true) }
     var poke by remember { mutableLongStateOf(0L) }
     var members by remember { mutableStateOf(false) }
     var ctrl by remember { mutableStateOf(false) }
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val touch = st.touchSupported && touchPref
+
+    // chat is open below the video in portrait, closed beside it in landscape
+    var portraitChat by remember { mutableStateOf(true) }
+    var sideChat by remember { mutableStateOf(false) }
+    val chatOpen = if (landscape) sideChat else portraitChat
+    fun setChat(open: Boolean) {
+        if (landscape) sideChat = open else portraitChat = open
+        if (!open) focusManager.clearFocus()
+        poke++
+    }
+    var seen by remember { mutableIntStateOf(0) }
+    LaunchedEffect(chatOpen, st.chat.size) { if (chatOpen) seen = st.chat.size }
+    val unread = if (chatOpen) 0 else st.chat.drop(seen).count { !it.system && !it.mine }
 
     LaunchedEffect(Unit) {
         runCatching { model.api.room(name, invite) }.onSuccess { room = it }
@@ -187,16 +228,31 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     }
 
     BackHandler {
-        if (landscape) toggleFullscreen() else onBack()
+        when {
+            landscape && sideChat -> setChat(false)
+            landscape -> toggleFullscreen()
+            else -> onBack()
+        }
     }
 
+    // touching the browser without control takes it when nobody has it
     var lastHint by remember { mutableLongStateOf(0L) }
     val notHost = {
-        val now = System.currentTimeMillis()
-        if (now - lastHint > 4000) {
-            lastHint = now
-            Toast.makeText(context, "Take control to use the browser", Toast.LENGTH_SHORT).show()
+        if (st.phase == Phase.Live && st.hostId == null) {
+            client.requestControl()
+        } else {
+            val now = System.currentTimeMillis()
+            if (now - lastHint > 4000) {
+                lastHint = now
+                val who = st.hostName ?: "Someone"
+                Toast.makeText(context, "$who has control. Tap Take control to ask for it", Toast.LENGTH_SHORT).show()
+            }
         }
+    }
+    // a touch on the video puts away the chat keyboard
+    val onStageTouch = {
+        if (!keyboard) focusManager.clearFocus()
+        poke++
     }
 
     val title = room?.displayTitle ?: name
@@ -217,55 +273,60 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
             onFullscreen = { toggleFullscreen() },
         )
     }
+    val chat = @Composable { modifier: Modifier ->
+        ChatPanel(st, photoOf, onSend = client::sendChat, onMembers = { members = true }, onClose = { setChat(false) }, modifier = modifier)
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (landscape) {
-            Stage(st, client, touch, notHost, joinError, onBack, Modifier.fillMaxSize())
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    Stage(st, client, touch, notHost, onStageTouch, joinError, onBack, Modifier.fillMaxSize())
 
-            AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent)))
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { toggleFullscreen() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Exit fullscreen", tint = Color.White) }
-                        Column(Modifier.weight(1f)) {
-                            Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            HostLine(st)
-                        }
-                        IconButton(onClick = { showChat = !showChat; poke++ }) {
-                            Icon(Icons.Outlined.ChatBubbleOutline, "Chat", tint = if (showChat) MaterialTheme.colorScheme.primary else Color.White)
+                    AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent)))
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { toggleFullscreen() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Exit fullscreen", tint = Color.White) }
+                                Column(Modifier.weight(1f)) {
+                                    Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    HostLine(st)
+                                }
+                                ChatButton(sideChat, unread, Color.White) { setChat(!sideChat) }
+                            }
+                            bar()
                         }
                     }
-                    bar()
+                    if (!controls) {
+                        IconButton(
+                            onClick = { controls = true; poke++ },
+                            colors = IconButtonDefaults.iconButtonColors(containerColor = Color.Black.copy(alpha = 0.45f)),
+                            modifier = Modifier.align(Alignment.TopStart).padding(10.dp).size(36.dp),
+                        ) { Icon(Icons.Outlined.MoreHoriz, "Show controls", tint = Color.White) }
+                        if (unread > 0) {
+                            Box(Modifier.align(Alignment.TopEnd).padding(6.dp)) {
+                                ChatButton(false, unread, Color.White) { setChat(true) }
+                            }
+                        }
+                    }
+                    if (keyboard) {
+                        KeyboardBar(client, ctrl, { ctrl = it }, onClose = { keyboard = false }, modifier = Modifier.align(Alignment.BottomCenter).imePadding())
+                    }
                 }
-            }
-            if (!controls) {
-                IconButton(
-                    onClick = { controls = true; poke++ },
-                    colors = IconButtonDefaults.iconButtonColors(containerColor = Color.Black.copy(alpha = 0.45f)),
-                    modifier = Modifier.align(Alignment.TopStart).padding(10.dp).size(36.dp),
-                ) { Icon(Icons.Outlined.MoreHoriz, "Show controls", tint = Color.White) }
-            }
-            AnimatedVisibility(
-                showChat,
-                enter = slideInHorizontally { it },
-                exit = slideOutHorizontally { it },
-                modifier = Modifier.align(Alignment.CenterEnd),
-            ) {
-                ChatPanel(
-                    st, photoOf, onSend = client::sendChat, onMembers = { members = true },
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(320.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
-                        .imePadding(),
-                )
-            }
-            if (keyboard) {
-                KeyboardBar(client, ctrl, { ctrl = it }, onClose = { keyboard = false }, modifier = Modifier.align(Alignment.BottomCenter).imePadding())
+                // the chat sits beside the video instead of over it
+                AnimatedVisibility(sideChat, enter = expandHorizontally(), exit = shrinkHorizontally()) {
+                    chat(
+                        Modifier
+                            .fillMaxHeight()
+                            .width(300.dp)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .imePadding()
+                    )
+                }
             }
         } else {
             Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -279,21 +340,23 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                         HostLine(st)
                     }
                     if (st.online.isNotEmpty()) {
-                        Box(Modifier.padding(end = 12.dp)) {
-                            TextButton(onClick = { members = true }) {
-                                AvatarStack(st.online.map { it.name }, photoOf, 24.dp, 3)
-                            }
+                        TextButton(onClick = { members = true }) {
+                            AvatarStack(st.online.map { it.name }, photoOf, 24.dp, 3)
                         }
                     }
+                    ChatButton(portraitChat, unread, MaterialTheme.colorScheme.onSurface) { setChat(!portraitChat) }
                 }
                 val ratio = st.screenWidth.toFloat() / st.screenHeight.coerceAtLeast(1)
-                Stage(st, client, touch, notHost, joinError, onBack, Modifier.fillMaxWidth().aspectRatio(ratio))
+                // without the chat the video gets all the room there is
+                val stage = if (portraitChat) Modifier.fillMaxWidth().aspectRatio(ratio) else Modifier.fillMaxWidth().weight(1f)
+                Stage(st, client, touch, notHost, onStageTouch, joinError, onBack, stage)
                 bar()
                 if (keyboard) KeyboardBar(client, ctrl, { ctrl = it }, onClose = { keyboard = false })
-                ChatPanel(
-                    st, photoOf, onSend = client::sendChat, onMembers = { members = true },
-                    modifier = Modifier.weight(1f).fillMaxWidth().navigationBarsPadding().imePadding(),
-                )
+                if (portraitChat) {
+                    chat(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding().imePadding())
+                } else {
+                    Spacer(Modifier.navigationBarsPadding().imePadding())
+                }
             }
         }
 
@@ -323,6 +386,19 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
 }
 
 @Composable
+private fun ChatButton(open: Boolean, unread: Int, tint: Color, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        BadgedBox(badge = { if (unread > 0) Badge { Text(if (unread > 9) "9+" else "$unread") } }) {
+            Icon(
+                Icons.Outlined.ChatBubbleOutline,
+                if (open) "Hide chat" else "Show chat",
+                tint = if (open) MaterialTheme.colorScheme.primary else tint,
+            )
+        }
+    }
+}
+
+@Composable
 private fun HostLine(st: RoomState) {
     val text = when {
         st.phase == Phase.Reconnecting -> "Reconnecting…"
@@ -333,38 +409,83 @@ private fun HostLine(st: RoomState) {
     Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
 }
 
-// Stage shows the video and turns touches into remote input
+private enum class Gesture { Pending, Held, Drag, Scroll, Zoom }
+
+// Stage shows the video and turns touches into remote input.
+//
+// Mouse mode, made for fingers: tap clicks (tap twice to double click), drag
+// scrolls, hold then drag selects or drags, hold and let go right clicks,
+// two fingers zoom and pan the picture.
 @Composable
 private fun Stage(
     st: RoomState,
     client: NekoClient,
     touch: Boolean,
     onNotHost: () -> Unit,
+    onTouchStart: () -> Unit,
     joinError: String?,
     onBack: () -> Unit,
     modifier: Modifier,
 ) {
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     var size by remember { mutableStateOf(IntSize.Zero) }
     val sw = st.screenWidth.coerceAtLeast(1)
     val sh = st.screenHeight.coerceAtLeast(1)
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var pan by remember { mutableStateOf(Offset.Zero) }
+    var pulseAt by remember { mutableStateOf<Offset?>(null) }
+    var pulseKey by remember { mutableIntStateOf(0) }
 
-    // view position to remote screen position, the video is letterboxed
+    val isHost by rememberUpdatedState(st.isHost)
+    val notHost by rememberUpdatedState(onNotHost)
+    val touchStart by rememberUpdatedState(onTouchStart)
+
+    LaunchedEffect(sw, sh) {
+        zoom = 1f
+        pan = Offset.Zero
+    }
+
+    // size of the letterboxed video at zoom 1
+    val fit = if (size.width > 0 && size.height > 0) min(size.width / sw.toFloat(), size.height / sh.toFloat()) else 0f
+    val vw = sw * fit
+    val vh = sh * fit
+
+    fun clampPan(p: Offset, z: Float): Offset {
+        val mx = max(0f, vw * z / 2f - size.width / 2f)
+        val my = max(0f, vh * z / 2f - size.height / 2f)
+        return Offset(p.x.coerceIn(-mx, mx), p.y.coerceIn(-my, my))
+    }
+
+    // view position to remote screen position, through letterbox and zoom
     fun map(p: Offset): Pair<Int, Int> {
-        val scale = min(size.width / sw.toFloat(), size.height / sh.toFloat())
-        val ox = (size.width - sw * scale) / 2f
-        val oy = (size.height - sh * scale) / 2f
-        val x = ((p.x - ox) / scale).toInt().coerceIn(0, sw - 1)
-        val y = ((p.y - oy) / scale).toInt().coerceIn(0, sh - 1)
+        if (fit <= 0f) return 0 to 0
+        val u = (p.x - size.width / 2f - pan.x) / zoom + vw / 2f
+        val v = (p.y - size.height / 2f - pan.y) / zoom + vh / 2f
+        val x = (u / fit).toInt().coerceIn(0, sw - 1)
+        val y = (v / fit).toInt().coerceIn(0, sh - 1)
         return x to y
     }
 
+    fun zoomBy(event: PointerEvent) {
+        val c = event.calculateCentroid()
+        if (c == Offset.Unspecified) return
+        val z2 = (zoom * event.calculateZoom()).coerceIn(1f, 4f)
+        val center = Offset(size.width / 2f, size.height / 2f)
+        // keep the point between the fingers under the fingers
+        val next = (c - center) - (c - center - pan) * (z2 / zoom) + event.calculatePan()
+        zoom = z2
+        pan = clampPan(next, z2)
+    }
+
     val input = if (touch) {
-        Modifier.pointerInput(st.isHost, size, sw, sh) {
+        Modifier.pointerInput(sw, sh, size) {
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent()
-                    if (!st.isHost) {
-                        if (event.changes.any { it.changedToDown() }) onNotHost()
+                    if (event.changes.any { it.changedToDown() }) touchStart()
+                    if (!isHost) {
+                        if (event.changes.any { it.changedToDown() }) notHost()
                         continue
                     }
                     event.changes.forEach { c ->
@@ -381,39 +502,154 @@ private fun Stage(
             }
         }
     } else {
-        // mouse mode: tap clicks, long press right clicks, drag scrolls
-        Modifier
-            .pointerInput(st.isHost, size, sw, sh) {
-                detectTapGestures(
-                    onTap = { p -> if (st.isHost) map(p).let { (x, y) -> client.click(x, y) } else onNotHost() },
-                    onDoubleTap = { p ->
-                        if (st.isHost) map(p).let { (x, y) -> client.click(x, y); client.click(x, y) } else onNotHost()
-                    },
-                    onLongPress = { p -> if (st.isHost) map(p).let { (x, y) -> client.click(x, y, Buttons.RIGHT) } },
-                )
-            }
-            .pointerInput(st.isHost, size, sw, sh) {
-                var acc = 0f
-                detectDragGestures(
-                    onDragStart = { p -> acc = 0f; if (st.isHost) map(p).let { (x, y) -> client.move(x, y) } },
-                    onDrag = { change, drag ->
-                        change.consume()
-                        if (!st.isHost) return@detectDragGestures
-                        acc += drag.y
-                        val step = 40f
-                        while (abs(acc) >= step) {
-                            // finger down scrolls the page up
-                            client.scroll(0, if (acc > 0) 1 else -1)
-                            acc -= if (acc > 0) step else -step
+        Modifier.pointerInput(sw, sh, size) {
+            val step = 22.dp.toPx()
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                touchStart()
+                val start = down.position
+                val slop = viewConfiguration.touchSlop
+                val holdAt = down.uptimeMillis + viewConfiguration.longPressTimeoutMillis
+                var now = down.uptimeMillis
+                var mode = Gesture.Pending
+                var last = start
+                var acc = Offset.Zero
+
+                while (true) {
+                    val event = if (mode == Gesture.Pending) {
+                        withTimeoutOrNull((holdAt - now).coerceAtLeast(1)) { awaitPointerEvent() }
+                    } else {
+                        awaitPointerEvent()
+                    }
+                    if (event == null) {
+                        mode = Gesture.Held
+                        if (isHost) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        continue
+                    }
+                    now = event.changes.first().uptimeMillis
+                    val pressed = event.changes.filter { it.pressed }
+
+                    if (pressed.size >= 2) {
+                        if (mode == Gesture.Drag) client.buttonUp(Buttons.LEFT)
+                        mode = Gesture.Zoom
+                        zoomBy(event)
+                        event.changes.forEach { it.consume() }
+                        continue
+                    }
+                    if (pressed.isEmpty()) {
+                        when (mode) {
+                            Gesture.Pending -> if (isHost) {
+                                val (x, y) = map(start)
+                                client.click(x, y)
+                                pulseAt = start
+                                pulseKey++
+                            } else {
+                                notHost()
+                            }
+                            Gesture.Held -> if (isHost) {
+                                val (x, y) = map(start)
+                                client.click(x, y, Buttons.RIGHT)
+                            } else {
+                                notHost()
+                            }
+                            Gesture.Drag -> client.buttonUp(Buttons.LEFT)
+                            else -> {}
                         }
-                    },
-                )
+                        event.changes.forEach { it.consume() }
+                        break
+                    }
+
+                    val c = pressed.first()
+                    val pos = c.position
+                    when (mode) {
+                        Gesture.Pending -> if ((pos - start).getDistance() > slop) {
+                            mode = Gesture.Scroll
+                            last = pos
+                        }
+                        Gesture.Scroll -> {
+                            if (isHost) {
+                                // the page follows the finger, like scrolling on a phone
+                                acc += pos - last
+                                while (abs(acc.y) >= step) {
+                                    val dir = if (acc.y > 0) 1 else -1
+                                    client.scroll(0, dir)
+                                    acc = acc.copy(y = acc.y - dir * step)
+                                }
+                                while (abs(acc.x) >= step) {
+                                    val dir = if (acc.x > 0) 1 else -1
+                                    client.scroll(dir, 0)
+                                    acc = acc.copy(x = acc.x - dir * step)
+                                }
+                            } else if (zoom > 1f) {
+                                pan = clampPan(pan + (pos - last), zoom)
+                            }
+                            last = pos
+                        }
+                        Gesture.Held -> if (isHost && (pos - start).getDistance() > slop / 2) {
+                            mode = Gesture.Drag
+                            val (sx, sy) = map(start)
+                            client.move(sx, sy)
+                            client.buttonDown(Buttons.LEFT)
+                            val (x, y) = map(pos)
+                            client.move(x, y)
+                        }
+                        Gesture.Drag -> {
+                            val (x, y) = map(pos)
+                            client.move(x, y)
+                        }
+                        Gesture.Zoom -> {}
+                    }
+                    c.consume()
+                }
             }
+        }
     }
 
-    Box(modifier.background(Color.Black).onSizeChanged { size = it }) {
-        VideoView(st.video, Modifier.fillMaxSize())
+    Box(modifier.background(Color.Black).clipToBounds().onSizeChanged { size = it }) {
+        VideoView(
+            st.video,
+            Modifier
+                .align(Alignment.Center)
+                .size(with(density) { vw.toDp() }, with(density) { vh.toDp() })
+                .graphicsLayer {
+                    scaleX = zoom
+                    scaleY = zoom
+                    translationX = pan.x
+                    translationY = pan.y
+                },
+        )
         Box(Modifier.fillMaxSize().then(input))
+
+        // a ring where a tap landed, so a click is felt
+        pulseAt?.let { at ->
+            val anim = remember(pulseKey) { Animatable(0f) }
+            LaunchedEffect(pulseKey) { anim.animateTo(1f, tween(380)) }
+            Canvas(Modifier.fillMaxSize()) {
+                val t = anim.value
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.6f * (1f - t)),
+                    radius = 8.dp.toPx() + 16.dp.toPx() * t,
+                    center = at,
+                    style = Stroke(2.dp.toPx()),
+                )
+            }
+        }
+
+        if (zoom > 1.01f) {
+            Surface(
+                onClick = { zoom = 1f; pan = Offset.Zero },
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = 0.55f),
+                contentColor = Color.White,
+                modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.ZoomOutMap, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Fit", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
 
         when {
             joinError != null || st.phase == Phase.Ended -> Overlay {
@@ -439,26 +675,41 @@ private fun Overlay(content: @Composable () -> Unit) {
     ) { content() }
 }
 
+// VideoView draws the stream on a TextureView, which, unlike a SurfaceView,
+// can be zoomed and clipped like any other view
 @Composable
 private fun VideoView(track: VideoTrack?, modifier: Modifier) {
-    var renderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+    val renderer = remember {
+        EglRenderer("video").apply { init(WebRtc.egl.eglBaseContext, EglBase.CONFIG_PLAIN, GlRectDrawer()) }
+    }
+    DisposableEffect(Unit) { onDispose { renderer.release() } }
     AndroidView(
         factory = { ctx ->
-            SurfaceViewRenderer(ctx).apply {
-                init(WebRtc.egl.eglBaseContext, null)
-                setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
-                setEnableHardwareScaler(true)
-                renderer = this
+            TextureView(ctx).apply {
+                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+                        renderer.createEglSurface(surface)
+                    }
+
+                    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+
+                    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                        val done = CountDownLatch(1)
+                        renderer.releaseEglSurface { done.countDown() }
+                        done.await(1, TimeUnit.SECONDS)
+                        return true
+                    }
+
+                    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+                }
             }
         },
-        onRelease = { it.release() },
         modifier = modifier,
     )
-    DisposableEffect(track, renderer) {
-        val r = renderer
-        if (track != null && r != null) runCatching { track.addSink(r) }
+    DisposableEffect(track) {
+        if (track != null) runCatching { track.addSink(renderer) }
         onDispose {
-            if (track != null && r != null) runCatching { track.removeSink(r) }
+            if (track != null) runCatching { track.removeSink(renderer) }
         }
     }
 }
@@ -512,6 +763,7 @@ private fun ChatPanel(
     photoOf: (String) -> String?,
     onSend: (String) -> Unit,
     onMembers: () -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier,
 ) {
     val list = rememberLazyListState()
@@ -520,15 +772,16 @@ private fun ChatPanel(
         if (st.chat.isNotEmpty()) list.animateScrollToItem(st.chat.size - 1)
     }
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Chat", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onMembers) { Text("${st.online.size} here") }
+            IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Hide chat") }
         }
         LazyColumn(
             state = list,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (st.chat.isEmpty()) {
