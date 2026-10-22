@@ -1,0 +1,23 @@
+# Raspberry Pi profile, layered on docker-compose.local.yml by
+# ./local/up.sh --pi (picked automatically on a Pi). See docs/local.md.
+#
+# Uses the published multi-arch image instead of building on the Pi, and
+# starts rooms at a lighter screen size so encoding keeps up with playback.
+
+services:
+  neko-rooms:
+    image: "ghcr.io/xo907/neko-rooms:latest"
+    pull_policy: "always"
+    environment:
+      # only browsers with arm64 images
+      - "NEKO_ROOMS_NEKO_IMAGES=ghcr.io/m1k1o/neko/firefox ghcr.io/m1k1o/neko/chromium"
+      # 1024x576 keeps a Pi 4 smooth while playing video,
+      # set NEKO_PI_SCREEN=1280x720@30 in .env.local for sharper rooms
+      - "NEKO_ROOMS_ROOM_DEFAULTS_SCREEN=${NEKO_PI_SCREEN:-1024x576@30}"
+      # a few rooms at most, each one runs a full browser
+      - "NEKO_ROOMS_EPR=${NEKO_ROOMS_EPR:-59000-59004}"
+    logging:
+      # spare the SD card
+      driver: "local"
+      options:
+        max-size: "5m"

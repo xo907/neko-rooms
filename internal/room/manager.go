@@ -65,6 +65,11 @@ func (manager *RoomManagerCtx) Config() types.RoomsConfig {
 		NekoImages:     manager.config.NekoImages,
 		StorageEnabled: manager.config.StorageEnabled,
 		UsesMux:        manager.config.Mux,
+		RoomDefaults: types.RoomDefaults{
+			Screen:        manager.config.RoomDefaults.Screen,
+			VideoCodec:    manager.config.RoomDefaults.VideoCodec,
+			VideoPipeline: manager.config.RoomDefaults.VideoPipeline,
+		},
 	}
 }
 

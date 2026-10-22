@@ -407,6 +407,21 @@ components:
         uses_mux:
           type: boolean
           example: true
+        room_defaults:
+          $ref: '#/components/schemas/RoomDefaults'
+
+    RoomDefaults:
+      type: object
+      description: suggested settings for new rooms, empty values keep the client defaults
+      properties:
+        screen:
+          type: string
+          example: 1024x576@30
+        video_codec:
+          type: string
+          example: VP8
+        video_pipeline:
+          type: string
 
     RoomEntry:
       type: object

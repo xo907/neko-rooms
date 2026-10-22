@@ -648,6 +648,23 @@ export interface RoomsConfig {
      * @memberof RoomsConfig
      */
     'uses_mux'?: boolean;
+    /**
+     * suggested settings for new rooms
+     * @type {RoomDefaults}
+     * @memberof RoomsConfig
+     */
+    'room_defaults'?: RoomDefaults;
+}
+
+/**
+ * suggested settings for new rooms, empty values keep the client defaults
+ * @export
+ * @interface RoomDefaults
+ */
+export interface RoomDefaults {
+    'screen'?: string;
+    'video_codec'?: string;
+    'video_pipeline'?: string;
 }
 
 /**
