@@ -1097,3 +1097,25 @@ func (manager *RoomManagerCtx) GetScreenshot(ctx context.Context, id string) ([]
 
 	return data, nil
 }
+
+// x11 runs a command against the room's X display.
+func (manager *RoomManagerCtx) x11(ctx context.Context, id string, script string, args ...string) ([]byte, error) {
+	cmd := append([]string{"sh", "-c", `DISPLAY="${DISPLAY:-:99.0}"; export DISPLAY; ` + script, "sh"}, args...)
+	return manager.containerExecRaw(ctx, id, cmd)
+}
+
+// GetWindowTitle returns the title of the active browser window, usually
+// the title of the page that is open.
+func (manager *RoomManagerCtx) GetWindowTitle(ctx context.Context, id string) (string, error) {
+	out, err := manager.x11(ctx, id, `xdotool getactivewindow getwindowname`)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// OpenURL opens a page in the room's browser, by typing it in the address bar.
+func (manager *RoomManagerCtx) OpenURL(ctx context.Context, id string, url string) error {
+	_, err := manager.x11(ctx, id, `xdotool key --clearmodifiers ctrl+l && sleep 0.2 && xdotool type --delay 4 -- "$1" && sleep 0.1 && xdotool key Return`, url)
+	return err
+}

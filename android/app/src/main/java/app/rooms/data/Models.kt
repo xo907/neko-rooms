@@ -67,8 +67,22 @@ data class Room(
     val avatars: Map<String, String> = emptyMap(),
     @SerialName("has_thumbnail") val hasThumbnail: Boolean = false,
     @SerialName("invite_code") val inviteCode: String? = null,
+    @SerialName("now_playing") val nowPlaying: String = "",
+    val sleeping: Boolean = false,
+    @SerialName("scheduled_at") val scheduledAt: String? = null,
+    val rsvps: Int = 0,
+    val going: Boolean = false,
+    val guests: List<String> = emptyList(),
 ) {
     val displayTitle: String get() = title.ifBlank { name }
+
+    // start of the watch party, while it is upcoming or on
+    val partyAt: java.time.Instant? get() = scheduledAt?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+
+    // a party about to start, joining starts the room
+    val partyOn: Boolean get() = partyAt?.let { it.minusSeconds(120).isBefore(java.time.Instant.now()) } == true
+
+    val canWakeUp: Boolean get() = !running && (sleeping || partyOn)
 }
 
 @Serializable
@@ -85,7 +99,7 @@ internal data class JoinRequest(
 )
 
 @Serializable
-internal data class JoinResponse(val url: String = "")
+internal data class JoinResponse(val url: String = "", val waking: Boolean = false)
 
 @Serializable
 internal data class LoginRequest(val username: String, val password: String)

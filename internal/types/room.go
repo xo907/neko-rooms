@@ -181,6 +181,8 @@ type RoomManager interface {
 	GetSettings(ctx context.Context, id string) (*RoomSettings, error)
 	GetStats(ctx context.Context, id string) (*RoomStats, error)
 	GetScreenshot(ctx context.Context, id string) ([]byte, error)
+	GetWindowTitle(ctx context.Context, id string) (string, error)
+	OpenURL(ctx context.Context, id string, url string) error
 	Remove(ctx context.Context, id string) error
 
 	Start(ctx context.Context, id string) error

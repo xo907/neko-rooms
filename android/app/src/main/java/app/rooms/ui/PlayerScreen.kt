@@ -132,11 +132,30 @@ import app.rooms.data.Room
 import app.rooms.neko.Buttons
 import app.rooms.neko.ChatLine
 import app.rooms.neko.Keys
+import app.rooms.neko.LiveClient
+import app.rooms.neko.LiveState
+import app.rooms.neko.Reaction
 import app.rooms.neko.NekoClient
 import app.rooms.neko.Phase
 import app.rooms.neko.RoomState
 import app.rooms.neko.WebRtc
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.random.Random
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
 import org.webrtc.EglBase
 import org.webrtc.EglRenderer
 import org.webrtc.GlRectDrawer
@@ -159,6 +178,12 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
 
     var room by remember { mutableStateOf<Room?>(null) }
     var joinError by remember { mutableStateOf<String?>(null) }
+    var waking by remember { mutableStateOf(false) }
+    var live by remember { mutableStateOf<LiveClient?>(null) }
+    val noLive = remember { MutableStateFlow(LiveState()) }
+    val ls by (live?.state ?: noLive).collectAsState()
+    var reactOpen by remember { mutableStateOf(false) }
+    var queueOpen by remember { mutableStateOf(false) }
     var touchPref by remember { mutableStateOf(model.prefs.touchInput) }
     var keyboard by remember { mutableStateOf(false) }
     var controls by remember { mutableStateOf(true) }
@@ -183,15 +208,50 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
 
     LaunchedEffect(Unit) {
         runCatching { model.api.room(name, invite) }.onSuccess { room = it }
-        runCatching { model.api.join(name, invite, nickname) }
-            .onSuccess { client.start(it) }
-            .onFailure { joinError = it.message ?: "Could not join the room" }
+        runCatching {
+            var url = model.api.join(name, invite, nickname)
+            if (url == null) {
+                // the room was asleep and is starting, rooms whose health
+                // check never passes still open after a while
+                waking = true
+                val until = System.currentTimeMillis() + 60_000
+                while (System.currentTimeMillis() < until) {
+                    delay(2500)
+                    val r = runCatching { model.api.room(name, invite) }.getOrNull()
+                    if (r != null) room = r
+                    if (r?.ready == true) break
+                }
+                url = model.api.join(name, invite, nickname)
+                    ?: throw IllegalStateException("The room is still waking up, try again in a moment")
+                waking = false
+            }
+            url
+        }.onSuccess { url ->
+            client.start(url)
+            url.queryParameter("nrt")?.let { ticket ->
+                live = LiveClient(WatchPartyApp.instance.http, model.api.apiRoot(), name, ticket, url.queryParameter("usr") ?: nickname ?: "")
+                    .also { it.start() }
+            }
+        }.onFailure {
+            waking = false
+            joinError = it.message ?: "Could not join the room"
+        }
+    }
+
+    // messages from the live channel
+    LaunchedEffect(live) {
+        live?.errors?.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+    }
+    // getting control lowers your hand
+    LaunchedEffect(st.isHost, ls.handUp) {
+        if (st.isHost && ls.handUp) live?.hand(false)
     }
 
     DisposableEffect(Unit) {
         view.keepScreenOn = true
         onDispose {
             client.stop()
+            live?.stop()
             view.keepScreenOn = false
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
@@ -273,6 +333,41 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
             onFullscreen = { toggleFullscreen() },
         )
     }
+    val social = @Composable {
+        if (live != null) {
+            SocialBar(
+                ls = ls,
+                reactOpen = reactOpen,
+                onToggleReact = { reactOpen = !reactOpen; poke++ },
+                onReact = { live?.react(it); poke++ },
+                onHand = { live?.hand(!ls.handUp); poke++ },
+                onQueue = { queueOpen = true },
+            )
+        }
+    }
+    val stageOverlays = @Composable {
+        if (live != null) {
+            FlyingReactions(live, Modifier.fillMaxSize())
+            Column(
+                Modifier.padding(start = 10.dp, top = if (landscape && controls) 120.dp else 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (ls.playing.isNotBlank()) OverlayChip("Now playing", ls.playing)
+                ls.hands.forEachIndexed { i, h ->
+                    val mine = h.id == ls.me?.id
+                    OverlayChip(
+                        "✋",
+                        h.name + (if (mine) " (you)" else "") + (if (i == 0 && !st.isHost) " is next" else ""),
+                        action = if (i == 0 && st.isHost && !mine) "Pass control" else null,
+                        onAction = {
+                            client.releaseControl()
+                            live?.hand(false, h.id)
+                        },
+                    )
+                }
+            }
+        }
+    }
     val chat = @Composable { modifier: Modifier ->
         ChatPanel(st, photoOf, onSend = client::sendChat, onMembers = { members = true }, onClose = { setChat(false) }, modifier = modifier)
     }
@@ -281,7 +376,8 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
         if (landscape) {
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    Stage(st, client, touch, notHost, onStageTouch, joinError, onBack, Modifier.fillMaxSize())
+                    Stage(st, client, touch, notHost, onStageTouch, joinError, waking, onBack, Modifier.fillMaxSize())
+                    stageOverlays()
 
                     androidx.compose.animation.AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
                         Column(
@@ -299,6 +395,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                                 ChatButton(sideChat, unread, Color.White) { setChat(!sideChat) }
                             }
                             bar()
+                            social()
                         }
                     }
                     if (!controls) {
@@ -349,8 +446,12 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                 val ratio = st.screenWidth.toFloat() / st.screenHeight.coerceAtLeast(1)
                 // without the chat the video gets all the room there is
                 val stage = if (portraitChat) Modifier.fillMaxWidth().aspectRatio(ratio) else Modifier.fillMaxWidth().weight(1f)
-                Stage(st, client, touch, notHost, onStageTouch, joinError, onBack, stage)
+                Box(stage) {
+                    Stage(st, client, touch, notHost, onStageTouch, joinError, waking, onBack, Modifier.fillMaxSize())
+                    stageOverlays()
+                }
                 bar()
+                social()
                 if (keyboard) KeyboardBar(client, ctrl, { ctrl = it }, onClose = { keyboard = false })
                 if (portraitChat) {
                     chat(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding().imePadding())
@@ -362,6 +463,18 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
 
         // hidden field that receives the on-screen keyboard
         if (keyboard) RemoteKeyboard(client, ctrl) { ctrl = false }
+    }
+
+    if (queueOpen && live != null) {
+        QueueSheet(
+            ls = ls,
+            hostName = st.hostName,
+            onAdd = { live?.add(it) },
+            onVote = { live?.vote(it) },
+            onPlay = { live?.play(it) },
+            onRemove = { live?.remove(it) },
+            onDismiss = { queueOpen = false },
+        )
     }
 
     if (members) {
@@ -382,6 +495,214 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
             },
             confirmButton = { TextButton(onClick = { members = false }) { Text("Close") } },
         )
+    }
+}
+
+// SocialBar has reactions, raising a hand and the up next queue
+@Composable
+private fun SocialBar(
+    ls: LiveState,
+    reactOpen: Boolean,
+    onToggleReact: () -> Unit,
+    onReact: (String) -> Unit,
+    onHand: () -> Unit,
+    onQueue: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (reactOpen) {
+            LiveClient.Reactions.forEach { e ->
+                Surface(onClick = { onReact(e) }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    Text(e, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
+                }
+            }
+            SocialPill("✕", "Done", onClick = onToggleReact)
+        } else {
+            SocialPill("😀", "React", onClick = onToggleReact)
+            SocialPill("✋", if (ls.handUp) "Lower hand" else "Raise hand", active = ls.handUp, badge = ls.hands.size, onClick = onHand)
+            SocialPill("▶", "Up next", badge = ls.queue.size, onClick = onQueue)
+        }
+    }
+}
+
+@Composable
+private fun SocialPill(icon: String, label: String, active: Boolean = false, badge: Int = 0, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(icon, fontSize = 15.sp)
+            Spacer(Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            if (badge > 0) {
+                Spacer(Modifier.width(6.dp))
+                Badge { Text("$badge") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverlayChip(label: String, text: String, action: String? = null, onAction: () -> Unit = {}) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.6f))
+            .padding(start = 12.dp, end = if (action != null) 4.dp else 12.dp, top = 4.dp, bottom = 4.dp)
+            .widthIn(max = 320.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.width(6.dp))
+        Text(text, color = Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (action != null) {
+            Spacer(Modifier.width(6.dp))
+            Surface(onClick = onAction, shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary) {
+                Text(action, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+            }
+        }
+    }
+}
+
+// FlyingReactions floats everyone's reactions up over the video
+@Composable
+private fun FlyingReactions(live: LiveClient?, modifier: Modifier) {
+    val items = remember { mutableStateListOf<Reaction>() }
+    LaunchedEffect(live) {
+        live?.reactions?.collect { r ->
+            items.add(r)
+            if (items.size > 24) items.removeAt(0)
+        }
+    }
+    BoxWithConstraints(modifier) {
+        val w = maxWidth
+        val h = maxHeight
+        items.toList().forEach { r ->
+            key(r.key) {
+                FlyingEmoji(r, w, h) { items.remove(r) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlyingEmoji(r: Reaction, w: androidx.compose.ui.unit.Dp, h: androidx.compose.ui.unit.Dp, onDone: () -> Unit) {
+    val progress = remember { Animatable(0f) }
+    val x = remember { Random.nextFloat() }
+    val drift = remember { Random.nextFloat() - 0.5f }
+    LaunchedEffect(Unit) {
+        progress.animateTo(1f, tween(3000, easing = LinearOutSlowInEasing))
+        onDone()
+    }
+    val t = progress.value
+    Column(
+        Modifier
+            .offset(x = w * (0.05f + x * 0.4f) + (drift * 70).dp * t, y = h - 70.dp - h * 0.6f * t)
+            .graphicsLayer {
+                alpha = if (t < 0.1f) t * 10f else 1f - ((t - 0.6f).coerceAtLeast(0f) / 0.4f)
+                val s = 0.7f + 0.3f * (t * 6f).coerceAtMost(1f)
+                scaleX = s
+                scaleY = s
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(r.emoji, fontSize = 32.sp)
+        if (r.name.isNotBlank()) {
+            Text(
+                r.name,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                modifier = Modifier.background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50)).padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
+    }
+}
+
+// QueueSheet is the up next list: links people add and vote on
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QueueSheet(
+    ls: LiveState,
+    hostName: String?,
+    onAdd: (String) -> Unit,
+    onVote: (Int) -> Unit,
+    onPlay: (Int) -> Unit,
+    onRemove: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val me = ls.me
+    var link by remember { mutableStateOf("") }
+    val canPlay = hostName == null || hostName == me?.name || me?.manager == true
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(horizontal = 16.dp).navigationBarsPadding().imePadding()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Up next", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.weight(1f))
+                if (ls.queue.isNotEmpty()) {
+                    Text("${ls.queue.size} ${if (ls.queue.size == 1) "link" else "links"}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    placeholder = { Text("Paste a link to add it") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (link.isNotBlank()) { onAdd(link.trim()); link = "" } }),
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { onAdd(link.trim()); link = "" }, enabled = link.isNotBlank()) { Text("Add") }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (ls.queue.isEmpty()) {
+                Text(
+                    "Nothing queued. Add a video or page everyone can vote on.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 20.dp),
+                )
+            } else {
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(ls.queue, key = { it.id }) { item ->
+                        val voted = me != null && me.id in item.voters
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
+                            Surface(
+                                onClick = { onVote(item.id) },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (voted) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                contentColor = if (voted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            ) {
+                                Column(Modifier.size(width = 42.dp, height = 46.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                    Text("▲", fontSize = 11.sp)
+                                    Text("${item.voters.size}", style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(item.title.ifBlank { item.host }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${item.host} · added by ${item.by}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (canPlay) {
+                                IconButton(onClick = { onPlay(item.id) }) { Icon(Icons.Outlined.PlayArrow, "Play it now", tint = MaterialTheme.colorScheme.primary) }
+                            }
+                            if (me != null && (item.byId == me.id || me.manager || hostName == me.name)) {
+                                IconButton(onClick = { onRemove(item.id) }) { Icon(Icons.Outlined.Close, "Remove") }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
     }
 }
 
@@ -424,6 +745,7 @@ private fun Stage(
     onNotHost: () -> Unit,
     onTouchStart: () -> Unit,
     joinError: String?,
+    waking: Boolean,
     onBack: () -> Unit,
     modifier: Modifier,
 ) {
@@ -660,7 +982,14 @@ private fun Stage(
             st.video == null -> Overlay {
                 CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.height(12.dp))
-                Text(if (st.phase == Phase.Reconnecting) "Reconnecting…" else "Joining room…", color = Color.White.copy(alpha = 0.8f))
+                Text(
+                    when {
+                        waking -> "Waking up the room…"
+                        st.phase == Phase.Reconnecting -> "Reconnecting…"
+                        else -> "Joining room…"
+                    },
+                    color = Color.White.copy(alpha = 0.8f),
+                )
             }
         }
     }

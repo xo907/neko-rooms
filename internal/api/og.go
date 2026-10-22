@@ -164,7 +164,12 @@ func (manager *ApiManagerCtx) siteCard(r *http.Request) ([]byte, error) {
 }
 
 func (manager *ApiManagerCtx) roomCard(r *http.Request, room *community.Room, invite string) ([]byte, error) {
-	key := "room|" + room.Name + "|" + invite + "|" + manager.branding.Version() + "|" + requestHost(r)
+	startsIn := ""
+	if room.ScheduledAt != nil && !room.Ready {
+		startsIn = StartsIn(*room.ScheduledAt, time.Now())
+	}
+	key := "room|" + room.Name + "|" + invite + "|" + manager.branding.Version() + "|" + requestHost(r) +
+		"|" + room.NowPlaying + "|" + startsIn + "|" + strconv.FormatBool(room.Sleeping)
 	if data, ok := manager.ogCache.get(key); ok {
 		return data, nil
 	}
@@ -176,6 +181,9 @@ func (manager *ApiManagerCtx) roomCard(r *http.Request, room *community.Room, in
 		Category:    room.Category,
 		Live:        room.Ready,
 		Viewers:     room.Viewers,
+		NowPlaying:  room.NowPlaying,
+		Sleeping:    room.Sleeping,
+		StartsIn:    startsIn,
 	}
 	if room.Ready {
 		if data, err := manager.community.Thumbnail(r.Context(), nil, room.Name, invite); err == nil {
@@ -302,6 +310,11 @@ func (manager *ApiManagerCtx) PageMeta(r *http.Request, base, name, invite strin
 	year := time.Now().Year()
 	api := base + "api/public/og/"
 
+	// links in Discord posts use the address admins open the site on
+	if u, _ := manager.auth.UserFromRequest(r); u.IsAdmin() {
+		manager.community.SeenBase(base)
+	}
+
 	site := &branding.PageMeta{
 		Title:       b.Expand(b.PageTitle, year),
 		Description: b.Description,
@@ -340,7 +353,18 @@ func (manager *ApiManagerCtx) PageMeta(r *http.Request, base, name, invite strin
 		} else if room.Viewers > 1 {
 			status += " · " + strconv.Itoa(room.Viewers) + " watching"
 		}
+		if room.NowPlaying != "" {
+			status += "\n▶ " + room.NowPlaying
+		}
 		desc = status + "\n" + desc
+	} else if room.ScheduledAt != nil {
+		status := "📅 Watch party " + StartsIn(*room.ScheduledAt, time.Now())
+		if room.RSVPs > 0 {
+			status += " · " + strconv.Itoa(room.RSVPs) + " going"
+		}
+		desc = status + "\n" + desc
+	} else if room.Sleeping {
+		desc = "💤 Sleeping, joining wakes it up\n" + desc
 	}
 
 	// a new image url every few minutes, chat apps keep images they have seen
@@ -362,5 +386,26 @@ func (manager *ApiManagerCtx) PageMeta(r *http.Request, base, name, invite strin
 		ImageAlt:    room.Title,
 		SiteName:    b.AppName,
 		OEmbed:      api + "oembed.json?" + oembed.Encode(),
+	}
+}
+
+// StartsIn says when a watch party starts, e.g. "in 2 hours".
+func StartsIn(at, now time.Time) string {
+	d := at.Sub(now)
+	plural := func(n int, unit string) string {
+		if n == 1 {
+			return "in 1 " + unit
+		}
+		return "in " + strconv.Itoa(n) + " " + unit + "s"
+	}
+	switch {
+	case d < time.Minute:
+		return "starting now"
+	case d < time.Hour:
+		return plural(int(d.Minutes()+0.5), "minute")
+	case d < 36*time.Hour:
+		return plural(int(d.Hours()+0.5), "hour")
+	default:
+		return plural(int(d.Hours()/24+0.5), "day")
 	}
 }

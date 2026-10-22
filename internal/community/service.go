@@ -33,6 +33,8 @@ const (
 type roomStats struct {
 	connections int
 	members     []string
+	host        string // name of the member in control
+	playing     string // title of the open page
 	updatedAt   time.Time
 }
 
@@ -53,6 +55,14 @@ type Service struct {
 	thumbMu sync.Mutex
 	thumbs  map[string]thumbnail // by room id
 
+	intMu        sync.RWMutex
+	integrations Integrations
+	seenBase     string
+	brand        func() (name, accent string)
+
+	activity activity
+	live     *liveHub
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -66,12 +76,22 @@ func New(rooms types.RoomManager, s *store.Store, a *auth.Manager) *Service {
 		auth:   a,
 		stats:  map[string]roomStats{},
 		thumbs: map[string]thumbnail{},
+		live:   newLiveHub(),
+		brand:  func() (string, string) { return "neko-rooms", "#2dd4bf" },
 		ctx:    ctx,
 		cancel: cancel,
 	}
 }
 
+// SetBrand tells the service the site name and accent color, for Discord posts.
+func (s *Service) SetBrand(f func() (name, accent string)) {
+	s.brand = f
+}
+
 func (s *Service) Start() {
+	s.loadIntegrations()
+	s.loadLiveSecret()
+
 	go func() {
 		ticker := time.NewTicker(statsInterval)
 		defer ticker.Stop()
@@ -101,6 +121,7 @@ func (s *Service) refreshStats() {
 		return
 	}
 
+	nowPlaying := s.Integrations().NowPlaying
 	next := map[string]roomStats{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -129,6 +150,14 @@ func (s *Service) refreshStats() {
 			for _, m := range st.Members {
 				if m != nil && m.Name != "" {
 					rs.members = append(rs.members, m.Name)
+					if m.ID == st.Host {
+						rs.host = m.Name
+					}
+				}
+			}
+			if nowPlaying {
+				if title, err := s.rooms.GetWindowTitle(ctx, id); err == nil {
+					rs.playing = cleanTitle(title)
 				}
 			}
 			// v2 does not always report connections, use member count
@@ -144,8 +173,11 @@ func (s *Service) refreshStats() {
 	wg.Wait()
 
 	s.statsMu.Lock()
+	prev := s.stats
 	s.stats = next
 	s.statsMu.Unlock()
+
+	s.afterRefresh(entries, prev, next)
 }
 
 func (s *Service) getStats(id string) roomStats {
@@ -185,7 +217,15 @@ type Room struct {
 	HasThumbnail   bool              `json:"has_thumbnail"`
 	CreatedAt      time.Time         `json:"created_at"`
 
+	NowPlaying  string     `json:"now_playing,omitempty"` // title of the open page
+	Sleeping    bool       `json:"sleeping"`              // stopped while empty, joining wakes it
+	ScheduledAt *time.Time `json:"scheduled_at"`          // watch party, while it is upcoming or on
+	RSVPs       int        `json:"rsvps"`
+	Going       bool       `json:"going"` // the viewer is going to the watch party
+	Guests      []string   `json:"guests"`
+
 	InviteCode string `json:"invite_code,omitempty"` // only for managers
+	KeepAwake  bool   `json:"keep_awake,omitempty"`  // only for managers
 }
 
 type viewer struct {
@@ -194,6 +234,7 @@ type viewer struct {
 	usernames map[string]bool // friend usernames & display names, for presence
 	policy    auth.Policy
 	users     map[int64]*store.User
+	rsvps     map[string][]int64     // room name -> user ids
 	avatars   map[string]*store.User // lowercase username & display name -> user with an avatar
 }
 
@@ -209,6 +250,9 @@ func (s *Service) newViewer(u *store.User) (*viewer, error) {
 
 	users, err := s.store.ListUsers()
 	if err != nil {
+		return nil, err
+	}
+	if v.rsvps, err = s.store.RSVPs(); err != nil {
 		return nil, err
 	}
 	for _, x := range users {
@@ -335,11 +379,40 @@ func (s *Service) toRoom(v *viewer, e types.RoomEntry, meta *store.RoomMeta) Roo
 	if r.CanManage && meta != nil {
 		r.InviteCode = meta.InviteCode
 		r.Hidden = meta.Hidden
+		r.KeepAwake = meta.KeepAwake
+	}
+
+	r.Guests = []string{}
+	if meta != nil {
+		r.Sleeping = meta.Sleeping && !e.Running
+		// a party shows until a while after its start
+		if meta.ScheduledAt != nil && time.Now().Before(meta.ScheduledAt.Add(partyWindow)) {
+			at := *meta.ScheduledAt
+			r.ScheduledAt = &at
+			for _, id := range v.rsvps[e.Name] {
+				o, ok := v.users[id]
+				if !ok || o.Disabled {
+					continue
+				}
+				r.RSVPs++
+				if v.user != nil && id == v.user.ID {
+					r.Going = true
+				}
+				name := o.DisplayName
+				if name == "" {
+					name = o.Username
+				}
+				if v.policy.ShowMemberNames || r.CanManage {
+					r.Guests = append(r.Guests, name)
+				}
+			}
+		}
 	}
 
 	if r.Ready {
 		st := s.getStats(e.ID)
 		r.Viewers = st.connections
+		r.NowPlaying = st.playing
 		if v.policy.ShowMemberNames || r.CanManage {
 			r.Members = append(r.Members, st.members...)
 		}
@@ -392,6 +465,9 @@ func (s *Service) Directory(ctx context.Context, u *store.User) ([]Room, error) 
 		}
 		if a.Ready != b.Ready {
 			return a.Ready
+		}
+		if a.Sleeping != b.Sleeping {
+			return a.Sleeping
 		}
 		if a.Viewers != b.Viewers {
 			return a.Viewers > b.Viewers
@@ -472,7 +548,17 @@ func (s *Service) JoinURL(ctx context.Context, u *store.User, name, invite, disp
 		return "", ErrForbidden
 	}
 	if !entry.Running {
-		return "", errors.New("room is not running")
+		meta, err := s.store.GetRoomMeta(name)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return "", err
+		}
+		if !canWake(meta, time.Now()) {
+			return "", errors.New("room is not running")
+		}
+		if err := s.wake(ctx, entry); err != nil {
+			return "", err
+		}
+		return "", ErrWaking
 	}
 
 	settings, err := s.rooms.GetSettings(ctx, entry.ID)
@@ -499,6 +585,9 @@ func (s *Service) JoinURL(ctx context.Context, u *store.User, name, invite, disp
 		}
 		q.Set("usr", displayName)
 	}
+
+	// the key to the room's live channel: reactions, hands and the queue
+	q.Set("nrt", s.issueTicket(name, q.Get("usr"), r.CanManage))
 
 	return entry.URL + "?" + q.Encode(), nil
 }

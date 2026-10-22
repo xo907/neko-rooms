@@ -55,5 +55,13 @@ func Parse(policiesJson string) (*types.BrowserPolicyContent, error) {
 		policies.PersistentData = val.(float64) == 1
 	}
 
+	//
+	// Homepage
+	//
+
+	if val, ok := policiesTmpl["HomepageLocation"].(string); ok {
+		policies.Homepage = val
+	}
+
 	return &policies, nil
 }

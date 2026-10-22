@@ -64,5 +64,13 @@ func Parse(policiesJson string) (*types.BrowserPolicyContent, error) {
 		policies.PersistentData = !val.(bool)
 	}
 
+	//
+	// Homepage
+	//
+
+	if val, ok := policiesTmpl.Policies["Homepage"].(map[string]any); ok {
+		policies.Homepage, _ = val["URL"].(string)
+	}
+
 	return &policies, nil
 }

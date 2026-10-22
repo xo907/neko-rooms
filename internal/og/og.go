@@ -92,6 +92,9 @@ type Room struct {
 	Thumbnail   image.Image // optional
 	OwnerName   string      // optional
 	OwnerAvatar image.Image // optional
+	NowPlaying  string      // optional
+	Sleeping    bool
+	StartsIn    string // optional, e.g. "in 2 hours"
 }
 
 var (
@@ -192,6 +195,10 @@ func (r *Renderer) RoomCard(c Room) ([]byte, error) {
 			label = "Live · " + strconv.Itoa(c.Viewers) + " watching"
 		}
 		livePill(img, r.face(r.bold, 22), x, pillTop, 42, label, bg)
+	} else if c.StartsIn != "" {
+		pill(img, r.face(r.bold, 22), x, pillTop, 42, "Watch party "+c.StartsIn, tint(c.Accent), mix(bg, c.Accent, 0.18))
+	} else if c.Sleeping {
+		pill(img, r.face(r.sans, 22), x, pillTop, 42, "Sleeping · join to wake it", soft, glass(bg, 0.07))
 	} else {
 		pill(img, r.face(r.sans, 22), x, pillTop, 42, "Offline", muted, glass(bg, 0.07))
 	}
@@ -208,8 +215,21 @@ func (r *Renderer) RoomCard(c Room) ([]byte, error) {
 	if len(title) > 1 {
 		descLines = 2
 	}
-	desc := wrap(descFace, c.Description, 600, descLines)
 	descFirst := titleFirst + (len(title)-1)*88 + 58
+
+	// what is on, above the description
+	if c.NowPlaying != "" && c.Live {
+		label := "Now playing  "
+		lf := r.face(r.sans, 26)
+		text(img, lf, pad, descFirst, muted, label)
+		w := width(lf, label)
+		pf := r.face(r.bold, 26)
+		text(img, pf, pad+w, descFirst, white, ellipsize(pf, c.NowPlaying, 600-w))
+		descFirst += 50
+		descLines--
+	}
+
+	desc := wrap(descFace, c.Description, 600, descLines)
 	for i, line := range desc {
 		text(img, descFace, pad, descFirst+i*40, muted, line)
 	}

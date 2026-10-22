@@ -105,6 +105,20 @@ var migrations = []string{
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 	`,
+	// 4: sleeping rooms & scheduled watch parties
+	`
+	ALTER TABLE room_meta ADD COLUMN keep_awake INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE room_meta ADD COLUMN sleeping INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE room_meta ADD COLUMN scheduled_at DATETIME;
+	ALTER TABLE room_meta ADD COLUMN start_url TEXT NOT NULL DEFAULT '';
+
+	CREATE TABLE room_rsvps (
+		room       TEXT NOT NULL,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (room, user_id)
+	);
+	`,
 }
 
 type Store struct {

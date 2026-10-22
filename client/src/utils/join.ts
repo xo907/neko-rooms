@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import { RawLocation } from 'vue-router'
+import Swal from 'sweetalert2'
 import { api, errorMessage, Room } from '@/api-ext'
 import { isPlaying, openPlayer, player } from '@/player/state'
 
@@ -31,7 +32,12 @@ export async function resolveJoinUrl(vm: Vue, name: string, invite?: string): Pr
   }
 
   try {
-    return await api.join(name, invite, displayName)
+    let res = await api.join(name, invite, displayName)
+    if (res.waking) {
+      if (!await waitAwake(vm, name, invite)) return null
+      res = await api.join(name, invite, displayName)
+    }
+    return res.url || null
   } catch (e) {
     vm.$swal({
       title: 'Unable to join',
@@ -40,6 +46,33 @@ export async function resolveJoinUrl(vm: Vue, name: string, invite?: string): Pr
     })
     return null
   }
+}
+
+// waitAwake shows a sleeping room starting up, false when cancelled
+async function waitAwake(vm: Vue, name: string, invite?: string): Promise<boolean> {
+  let cancelled = false
+  vm.$swal({
+    title: 'Waking up the room',
+    text: 'It was asleep because nobody was in it. This takes a few seconds.',
+    showConfirmButton: false,
+    showCancelButton: true,
+    cancelButtonText: 'Cancel',
+    allowOutsideClick: false,
+    didOpen: () => { Swal.showLoading() },
+  }).then(() => { cancelled = true })
+
+  // rooms whose health check never passes still open after a while
+  const until = Date.now() + 60000
+  while (!cancelled && Date.now() < until) {
+    await new Promise(resolve => setTimeout(resolve, 2500))
+    try {
+      const room = await api.room(name, invite)
+      if (room.ready) break
+    } catch { /* try again */ }
+  }
+  if (cancelled) return false
+  Swal.close()
+  return true
 }
 
 export function watchRoute(name: string, invite?: string): RawLocation {
@@ -91,6 +124,16 @@ export function inviteLink(name: string, code: string): string {
 
 export function roomLink(name: string): string {
   return `${siteBase()}r/${encodeURIComponent(name)}`
+}
+
+// relativeTime says when something happens, e.g. "in 2 hours"
+export function relativeTime(at: Date, now = Date.now()): string {
+  const mins = Math.round((at.getTime() - now) / 60000)
+  if (mins <= 0) return 'now'
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  if (mins < 60) return rtf.format(mins, 'minute')
+  if (mins < 36 * 60) return rtf.format(Math.round(mins / 60), 'hour')
+  return rtf.format(Math.round(mins / 1440), 'day')
 }
 
 export async function copyText(text: string): Promise<boolean> {

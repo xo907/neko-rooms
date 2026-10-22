@@ -93,7 +93,8 @@ fun HomeScreen(
     val photoOf = { name: String -> rooms?.firstNotNullOfOrNull { it.avatars[name] }?.let { model.api.apiUrl(it) } }
 
     val visible = rooms.orEmpty().filter { r ->
-        (r.running || r.isOwner) &&
+        // sleeping rooms and upcoming parties are as good as running ones
+        (r.running || r.sleeping || r.partyAt != null || r.isOwner) &&
             (category == null || r.category == category) &&
             (query.isBlank() || listOf(r.displayTitle, r.name, r.description, r.category, r.owner?.name).plus(r.members)
                 .any { it?.contains(query.trim(), ignoreCase = true) == true })
@@ -105,6 +106,7 @@ fun HomeScreen(
             used += list.map { it.id }
             if (list.isNotEmpty()) add(Section(title, list))
         }
+        take("Upcoming watch parties") { it.partyAt != null && !it.ready }
         take("Featured") { it.featured && it.visibility == "public" }
         take("Friends") { it.isFriend || it.friendsInside.isNotEmpty() }
         take("Public") { it.visibility == "public" && !it.isOwner }
