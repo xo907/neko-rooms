@@ -67,7 +67,6 @@ func TestCards(t *testing.T) {
 		Description: "Classic sci-fi double feature, bring snacks. We start at 9 and take requests in the chat between films.",
 		Category:    "Movies",
 		Live:        true,
-		Viewers:     4,
 		Thumbnail:   sample(1280, 720, color.RGBA{0x1e, 0x3a, 0x8a, 0xff}, color.RGBA{0xbe, 0x18, 0x5d, 0xff}),
 		OwnerName:   "xo",
 		OwnerAvatar: sample(256, 256, color.RGBA{0xf5, 0x9e, 0x0b, 0xff}, color.RGBA{0xef, 0x44, 0x44, 0xff}),
