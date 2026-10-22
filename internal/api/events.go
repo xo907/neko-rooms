@@ -32,8 +32,8 @@ func (manager *ApiManagerCtx) events(w http.ResponseWriter, r *http.Request) {
 		// dummy channel, never ping
 		ping = make(<-chan time.Time)
 	} else {
-		// ping every 1 minute
-		ticker := time.NewTicker(time.Minute)
+		// ping often enough for proxies with a 60s read timeout
+		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		ping = ticker.C
 	}
@@ -47,6 +47,13 @@ func (manager *ApiManagerCtx) events(w http.ResponseWriter, r *http.Request) {
 		owned, err := manager.community.OwnedNames(u)
 		return err == nil && owned[e.ContainerLabels["m1k1o.neko_rooms.name"]]
 	}
+
+	// send the headers right away, so clients and proxies see an open stream
+	w.WriteHeader(http.StatusOK)
+	if sse {
+		fmt.Fprint(w, ": connected\n\n")
+	}
+	flusher.Flush()
 
 	// listen for room events
 	events, errs := manager.rooms.Events(r.Context())

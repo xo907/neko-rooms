@@ -1,0 +1,9 @@
+# Behind Nginx Proxy Manager, layered on docker-compose.local.yml by
+# ./local/up.sh --npm. See docs/local.md.
+
+services:
+  neko-rooms:
+    environment:
+      # trust X-Forwarded-* from the proxy: secure cookies, real client IPs
+      # (only safe because the site port is not reachable from outside)
+      - "NEKO_ROOMS_PROXY=true"

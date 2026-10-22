@@ -28,7 +28,7 @@ The script:
 1. detects your tailscale IP (LAN IP as a fallback) and writes it to `.env.local`
    as `NEKO_ROOMS_NAT1TO1`, the address browsers use for the room video (WebRTC)
 2. builds the image from this checkout and starts it with `docker-compose.local.yml`
-3. pulls the default room image (`ghcr.io/m1k1o/neko/firefox`)
+3. pulls the default room image (`ghcr.io/m1k1o/neko/firefox:3.1.6`)
 4. prints the URLs and, on first start, the one-time setup token for the admin account
 
 Then open `http://localhost:8188` on this machine, or `http://<tailscale-ip>:8188`
@@ -51,6 +51,64 @@ Put overrides in `.env.local` (created on first run, ignored by git):
 | `TZ` | system | time zone |
 
 Users, branding and settings live in the `neko-rooms-local-data` docker volume.
+
+## VPS (public IP)
+
+```bash
+git clone https://github.com/xo907/neko-rooms.git && cd neko-rooms && ./local/up.sh --public
+```
+
+`--public` makes the site and the room video reachable on the server's public
+IP and uses the published image instead of building. It is remembered in
+`.env.local`, so `./local/up.sh` alone keeps it (`--no-public` to go back).
+
+- open the ports it prints: TCP for the website (8188) and TCP + UDP for the
+  room video (59000-59049, one per room), in the server firewall and in the
+  VPS provider's firewall if it has one
+- if the public IP is not on the server itself (some clouds use NAT), set it:
+  `echo NEKO_ROOMS_PUBLIC_IP=<public ip> >> .env.local`
+- every room runs a full browser, plan for about 1.5 GB of RAM and one or two
+  CPU cores per active room
+
+Plain HTTP sends passwords unencrypted, for HTTPS use Nginx Proxy Manager below.
+
+## Nginx Proxy Manager (domain + HTTPS)
+
+On a server that already runs [Nginx Proxy Manager](https://nginxproxymanager.com)
+(NPM), with a domain or subdomain pointing to the server:
+
+```bash
+git clone https://github.com/xo907/neko-rooms.git && cd neko-rooms && ./local/up.sh --npm
+```
+
+`--npm` finds the NPM container, joins its docker network and keeps the
+neko-rooms port private (only NPM can reach it). It trusts the proxy headers,
+so sign-in cookies are secure and rate limits see real visitor IPs. The room
+video still goes straight to the public IP. It is remembered in `.env.local`
+(`--no-npm` to undo).
+
+Then add the proxy host in the NPM web UI (usually `http://<server ip>:81`),
+the script prints these values for your server:
+
+1. **Hosts > Proxy Hosts > Add Proxy Host**
+2. **Details:** Domain Names `rooms.example.com`, Scheme `http`,
+   Forward Hostname / IP `neko-rooms-local`, Forward Port `8080`,
+   turn on **Block Common Exploits** and **Websockets Support**
+3. **SSL:** Request a new SSL Certificate, turn on **Force SSL** and **HTTP/2 Support**
+4. **Advanced**, Custom Nginx Configuration:
+   ```nginx
+   proxy_read_timeout 1h;
+   proxy_send_timeout 1h;
+   proxy_buffering off;
+   ```
+5. Save and open `https://rooms.example.com`.
+
+Open TCP and UDP 59000-59049 in the firewall for the room video. Ports 80/443
+are already NPM's, the neko-rooms port stays closed.
+
+If NPM runs on the default docker bridge or the host network, the script prints
+an IP to forward to instead of `neko-rooms-local`. If it can not find NPM, set
+its container name: `echo NPM_CONTAINER=<name> >> .env.local`.
 
 ## Raspberry Pi
 

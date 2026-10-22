@@ -14,6 +14,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+// NekoVersion of the default room images. Room pages are styled for the neko
+// client up to 3.1.x, 3.2 replaced it with a new client that is not styled yet.
+const NekoVersion = "3.1.6"
+
 var screenRegex = regexp.MustCompile(`^[0-9]{3,4}x[0-9]{3,4}@[0-9]{2,3}$`)
 
 type Traefik struct {
@@ -77,20 +81,20 @@ func (Room) Init(cmd *cobra.Command) error {
 	}
 
 	cmd.PersistentFlags().StringSlice("neko_images", []string{
-		"ghcr.io/m1k1o/neko/firefox",
-		"ghcr.io/m1k1o/neko/waterfox",
-		"ghcr.io/m1k1o/neko/tor-browser",
-		"ghcr.io/m1k1o/neko/chromium",
-		"ghcr.io/m1k1o/neko/google-chrome",
-		"ghcr.io/m1k1o/neko/ungoogled-chromium",
-		"ghcr.io/m1k1o/neko/microsoft-edge",
-		"ghcr.io/m1k1o/neko/brave",
-		"ghcr.io/m1k1o/neko/vivaldi",
-		"ghcr.io/m1k1o/neko/opera",
-		"ghcr.io/m1k1o/neko/remmina",
-		"ghcr.io/m1k1o/neko/vlc",
-		"ghcr.io/m1k1o/neko/xfce",
-		"ghcr.io/m1k1o/neko/kde",
+		"ghcr.io/m1k1o/neko/firefox:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/waterfox:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/tor-browser:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/chromium:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/google-chrome:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/ungoogled-chromium:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/microsoft-edge:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/brave:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/vivaldi:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/opera:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/remmina:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/vlc:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/xfce:" + NekoVersion,
+		"ghcr.io/m1k1o/neko/kde:" + NekoVersion,
 	}, "neko images to be used")
 	if err := viper.BindPFlag("neko_images", cmd.PersistentFlags().Lookup("neko_images")); err != nil {
 		return err

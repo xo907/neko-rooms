@@ -1,0 +1,7 @@
+# Use the published multi-arch image instead of a local build, layered on
+# docker-compose.local.yml by ./local/up.sh for --pi and --public.
+
+services:
+  neko-rooms:
+    image: "ghcr.io/xo907/neko-rooms:latest"
+    pull_policy: "always"
