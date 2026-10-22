@@ -69,6 +69,11 @@ class Api(private val http: OkHttpClient) {
             if (ser == null || text.isBlank()) null else json.decodeFromString(ser, text)
         }
 
+    // exec sends a request whose response body is not needed
+    private suspend fun exec(method: String, path: String, body: RequestBody?) {
+        call(Request.Builder().url(url(path)).method(method, body).build()) { }
+    }
+
     private fun <T> body(ser: KSerializer<T>, value: T): RequestBody =
         json.encodeToString(ser, value).toRequestBody(jsonType)
 
@@ -79,11 +84,11 @@ class Api(private val http: OkHttpClient) {
     suspend fun status(): AuthStatus = get("auth/status", AuthStatus.serializer())
 
     suspend fun login(username: String, password: String) {
-        send("POST", "auth/login", body(LoginRequest.serializer(), LoginRequest(username, password)), null)
+        exec("POST", "auth/login", body(LoginRequest.serializer(), LoginRequest(username, password)))
     }
 
     suspend fun logout() {
-        send("POST", "auth/logout", empty, null)
+        exec("POST", "auth/logout", empty)
     }
 
     // register returns false when the account waits for approval
@@ -134,15 +139,15 @@ class Api(private val http: OkHttpClient) {
     suspend fun friends(): List<Friend> = get("friends", ListSerializer(Friend.serializer()))
 
     suspend fun addFriend(username: String) {
-        send("POST", "friends", body(FriendRequest.serializer(), FriendRequest(username)), null)
+        exec("POST", "friends", body(FriendRequest.serializer(), FriendRequest(username)))
     }
 
     suspend fun acceptFriend(id: Long) {
-        send("POST", "friends/$id/accept", empty, null)
+        exec("POST", "friends/$id/accept", empty)
     }
 
     suspend fun removeFriend(id: Long) {
-        send("DELETE", "friends/$id", null, null)
+        exec("DELETE", "friends/$id", null)
     }
 
     suspend fun searchUsers(query: String): List<PublicUser> {
