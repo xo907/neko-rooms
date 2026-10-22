@@ -1,15 +1,19 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,6 +28,27 @@ import (
 	"github.com/m1k1o/neko-rooms/internal/config"
 	"github.com/m1k1o/neko-rooms/internal/types"
 )
+
+// pageMetas give link previews, the api manager implements it
+type pageMetas interface {
+	PageMeta(r *http.Request, base, name, invite string) *branding.PageMeta
+}
+
+// origin is the scheme and host the visitor used
+func origin(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = strings.TrimSpace(strings.Split(p, ",")[0])
+	}
+	host := r.Host
+	if h := r.Header.Get("X-Forwarded-Host"); h != "" {
+		host = strings.TrimSpace(strings.Split(h, ",")[0])
+	}
+	return scheme + "://" + host
+}
 
 type ServerManagerCtx struct {
 	logger zerolog.Logger
@@ -168,9 +193,14 @@ func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Se
 				http.Error(w, "admin client not found", http.StatusNotFound)
 				return
 			}
+			var meta *branding.PageMeta
+			if pm, ok := ApiManager.(pageMetas); ok {
+				dir := r.URL.Path[:strings.LastIndex(r.URL.Path, "/")+1]
+				meta = pm.PageMeta(r, origin(r)+dir, "", "")
+			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-cache")
-			w.Write(brandingManager.RenderIndex(raw))
+			w.Write(brandingManager.RenderIndexWith(raw, meta))
 			return
 		}
 
@@ -182,6 +212,39 @@ func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Se
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+	}
+
+	// share links, /r/{room}: chat apps never see the #/r/{room} part of an
+	// app link, this path gives them the room preview and opens the app
+	sharePage := func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "roomName")
+		invite := r.URL.Query().Get("invite")
+		raw, err := os.ReadFile(filepath.Join(config.Admin.Static, "index.html"))
+		if err != nil {
+			http.Error(w, "admin client not found", http.StatusNotFound)
+			return
+		}
+
+		var meta *branding.PageMeta
+		if pm, ok := ApiManager.(pageMetas); ok {
+			dir := strings.TrimSuffix(r.URL.Path, name)
+			dir = strings.TrimSuffix(dir, "r/")
+			meta = pm.PageMeta(r, origin(r)+dir, name, invite)
+		}
+		out := brandingManager.RenderIndexWith(raw, meta)
+
+		// the page is the app, one level up, at its #/r/{room} route
+		hash := "#/r/" + url.PathEscape(name)
+		if invite != "" {
+			hash += "?invite=" + url.QueryEscape(invite)
+		}
+		js, _ := json.Marshal(hash)
+		boot := `<base href="../"><script>history.replaceState(null,"",` + string(js) + `)</script>`
+		out = bytes.Replace(out, []byte("<head>"), []byte("<head>"+boot), 1)
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(out)
 	}
 
 	// DEPRECATED: admin should not be served from the same path as rooms
@@ -223,10 +286,16 @@ func New(ApiManager types.ApiManager, roomConfig *config.Room, config *config.Se
 
 		// serve API
 		router.With(protected).Route("/api", ApiManager.Mount)
+
+		if config.Admin.Static != "" {
+			router.With(protected).Get("/r/{roomName}", sharePage)
+		}
 	} else {
 		router.With(protected).Route(config.Admin.PathPrefix+"/", func(r chi.Router) {
 			// serve API
 			r.Route("/api", ApiManager.Mount)
+
+			r.Get("/r/{roomName}", sharePage)
 
 			// serve static files
 			r.Get("/*", func(w http.ResponseWriter, r *http.Request) {

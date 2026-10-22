@@ -79,14 +79,18 @@ export async function joinRoom(vm: Vue, name: string, opts: JoinOptions = {}): P
   }
 }
 
+// share links use /r/{room}, the server gives chat apps a preview of the room
+// there (they never see what follows a #) and sends visitors on to the app
+function siteBase(): string {
+  return location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')
+}
+
 export function inviteLink(name: string, code: string): string {
-  const base = location.href.split('#')[0]
-  return `${base}#/r/${encodeURIComponent(name)}?invite=${encodeURIComponent(code)}`
+  return `${siteBase()}r/${encodeURIComponent(name)}?invite=${encodeURIComponent(code)}`
 }
 
 export function roomLink(name: string): string {
-  const base = location.href.split('#')[0]
-  return `${base}#/r/${encodeURIComponent(name)}`
+  return `${siteBase()}r/${encodeURIComponent(name)}`
 }
 
 export async function copyText(text: string): Promise<boolean> {
