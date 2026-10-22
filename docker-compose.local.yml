@@ -4,7 +4,7 @@
 # which fill in .env.local for you. See docs/local.md.
 #
 # Room links are relative (NEKO_ROOMS_INSTANCE_URL is left unset), so the
-# site works on whatever address you open it on: http://localhost:8080,
+# site works on whatever address you open it on: http://localhost:8188,
 # your LAN IP, the tailscale IP or the MagicDNS name.
 
 name: "neko-rooms-local"
@@ -37,7 +37,7 @@ services:
       - "NEKO_ROOMS_ADMIN_USERNAME=${NEKO_ROOMS_ADMIN_USERNAME:-admin}"
       - "NEKO_ROOMS_ADMIN_PASSWORD=${NEKO_ROOMS_ADMIN_PASSWORD:-}"
     ports:
-      - "${NEKO_ROOMS_PORT:-8080}:8080"
+      - "${NEKO_ROOMS_PORT:-8188}:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "neko-rooms-local-data:/data" # users, branding & settings

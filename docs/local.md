@@ -31,8 +31,9 @@ The script:
 3. pulls the default room image (`ghcr.io/m1k1o/neko/firefox`)
 4. prints the URLs and, on first start, the one-time setup token for the admin account
 
-Then open `http://localhost:8080` on this machine, or `http://<tailscale-ip>:8080`
-/ `http://<machine>.<tailnet>.ts.net:8080` from any device on your tailnet.
+Then open `http://localhost:8188` on this machine, or `http://<tailscale-ip>:8188`
+/ `http://<machine>.<tailnet>.ts.net:8188` from any device on your tailnet
+(the script prints the exact addresses).
 
 Other commands: `./local/up.sh --no-build`, `./local/up.sh logs`, `./local/up.sh down`.
 
@@ -42,7 +43,7 @@ Put overrides in `.env.local` (created on first run, ignored by git):
 
 | Variable | Default | |
 | --- | --- | --- |
-| `NEKO_ROOMS_PORT` | `8080` | port of the web UI on the host |
+| `NEKO_ROOMS_PORT` | `8188` | port of the web UI on the host, the next free one is picked if 8188 is taken |
 | `NEKO_ROOMS_EPR` | `59000-59049` | one UDP + TCP port per room, published on the host |
 | `NEKO_ROOMS_NAT1TO1` | detected | IP that viewers reach the room streams on |
 | `NEKO_ROOMS_ADMIN_USERNAME` | `admin` | first admin account |
@@ -92,8 +93,8 @@ pre-fills new rooms, existing rooms keep their settings.
   reachable on the `NEKO_ROOMS_NAT1TO1` IP. Over Tailscale that works out of the box.
   If you use the LAN IP instead, allow those ports in the host firewall.
 - **Docker in WSL on Windows:** run Tailscale inside WSL too (that is the IP the
-  script picks up). `localhost:8080` in a Windows browser is forwarded to WSL.
+  script picks up). `localhost:8188` in a Windows browser is forwarded to WSL.
 - **Clipboard sync** in rooms needs a secure context (HTTPS or `localhost`). For
-  HTTPS on the tailnet, `tailscale serve --bg 8080` gives you
+  HTTPS on the tailnet, `tailscale serve --bg 8188` gives you
   `https://<machine>.<tailnet>.ts.net` without any other changes.
 - Setting `NEKO_ROOMS_INSTANCE_URL` switches back to absolute room links on that URL.
