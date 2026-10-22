@@ -1,6 +1,17 @@
 package app.rooms.ui
 
 import android.content.Intent
+import android.provider.CalendarContract
+import android.widget.Toast
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,6 +80,8 @@ fun RoomScreen(
     var forbidden by remember { mutableStateOf(false) }
     var bust by remember { mutableLongStateOf(System.currentTimeMillis() / 15000) }
     var askNickname by remember { mutableStateOf(false) }
+    var rsvping by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(name, invite, status?.user?.id) {
         while (true) {
@@ -142,16 +155,24 @@ fun RoomScreen(
                 Box {
                     RoomThumb(r, model.api.thumbnailUrl(r.name, bust, invite))
                     if (r.canJoin) {
+                        val party = r.partyAt
                         Button(
                             onClick = { join() },
-                            enabled = r.running,
+                            enabled = r.running || r.canWakeUp,
                             shape = RoundedCornerShape(50),
                             contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
                             modifier = Modifier.align(Alignment.Center),
                         ) {
-                            Icon(Icons.Outlined.PlayArrow, null, Modifier.size(20.dp))
+                            Icon(if (r.canWakeUp) Icons.Outlined.Bedtime else Icons.Outlined.PlayArrow, null, Modifier.size(20.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(if (r.running) "Join room" else "Not running")
+                            Text(
+                                when {
+                                    r.running -> "Join room"
+                                    r.canWakeUp -> "Wake up & join"
+                                    party != null -> "Starts ${relativeTime(party)}"
+                                    else -> "Not running"
+                                }
+                            )
                         }
                     }
                 }
@@ -160,10 +181,26 @@ fun RoomScreen(
                 Text(r.displayTitle, style = MaterialTheme.typography.headlineMedium)
                 Spacer(Modifier.height(10.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Tag(if (r.ready) "Live" else if (r.paused) "Paused" else "Offline", highlight = r.ready)
+                    Tag(
+                        when {
+                            r.ready -> "Live"
+                            r.paused -> "Paused"
+                            r.sleeping -> "Sleeping"
+                            else -> "Offline"
+                        },
+                        highlight = r.ready,
+                    )
+                    r.partyAt?.let { if (!r.ready) Tag("Watch party ${relativeTime(it)}", highlight = true) }
                     Tag(r.visibility.replaceFirstChar { it.uppercase() })
                     if (r.category.isNotBlank()) Tag(r.category)
                     if (r.featured) Tag("Featured")
+                }
+                if (r.nowPlaying.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Now playing  ", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        Text(r.nowPlaying, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 r.owner?.let { owner ->
                     Spacer(Modifier.height(14.dp))
@@ -181,6 +218,37 @@ fun RoomScreen(
                     Text(r.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
+                r.partyAt?.let { at ->
+                    Spacer(Modifier.height(20.dp))
+                    PartyCard(
+                        room = r,
+                        at = at,
+                        signedIn = status?.user != null,
+                        busy = rsvping,
+                        onRsvp = { going ->
+                            rsvping = true
+                            scope.launch {
+                                runCatching { model.api.rsvp(r.name, going, invite) }
+                                    .onSuccess { room = it }
+                                    .onFailure { Toast.makeText(context, it.message ?: "Could not RSVP", Toast.LENGTH_SHORT).show() }
+                                rsvping = false
+                            }
+                        },
+                        onSignIn = onSignIn,
+                        onCalendar = {
+                            val intent = Intent(Intent.ACTION_INSERT)
+                                .setData(CalendarContract.Events.CONTENT_URI)
+                                .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, at.toEpochMilli())
+                                .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, at.toEpochMilli() + 2 * 60 * 60 * 1000)
+                                .putExtra(CalendarContract.Events.TITLE, r.displayTitle)
+                                .putExtra(CalendarContract.Events.DESCRIPTION, listOf(r.description, model.api.roomLink(r.name, invite)).filter { it.isNotBlank() }.joinToString("\n\n"))
+                                .putExtra(CalendarContract.Events.EVENT_LOCATION, model.api.roomLink(r.name, invite))
+                            runCatching { context.startActivity(intent) }
+                                .onFailure { Toast.makeText(context, "No calendar app found", Toast.LENGTH_SHORT).show() }
+                        },
+                    )
+                }
+
                 Spacer(Modifier.height(24.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("In this room", style = MaterialTheme.typography.titleSmall)
@@ -190,7 +258,11 @@ fun RoomScreen(
                 Spacer(Modifier.height(10.dp))
                 if (r.members.isEmpty()) {
                     Text(
-                        if (r.ready) "Nobody is here yet. Be the first!" else "The room is not running right now.",
+                        when {
+                            r.ready -> "Nobody is here yet. Be the first!"
+                            r.sleeping -> "The room is asleep. Join to wake it up."
+                            else -> "The room is not running right now."
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -222,6 +294,58 @@ fun RoomScreen(
                 onJoin(nick)
             },
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PartyCard(
+    room: Room,
+    at: java.time.Instant,
+    signedIn: Boolean,
+    busy: Boolean,
+    onRsvp: (Boolean) -> Unit,
+    onSignIn: () -> Unit,
+    onCalendar: () -> Unit,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.large),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Event, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Watch party", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.weight(1f))
+                Text("${room.rsvps} going", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(partyDate(at), style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (room.ready) "Happening now" else "Starts ${relativeTime(at)}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(14.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (signedIn) {
+                    if (room.going) {
+                        Button(onClick = { onRsvp(false) }, enabled = !busy, shape = RoundedCornerShape(50)) { Text("Going") }
+                    } else {
+                        OutlinedButton(onClick = { onRsvp(true) }, enabled = !busy, shape = RoundedCornerShape(50)) { Text("I'm going") }
+                    }
+                } else {
+                    OutlinedButton(onClick = onSignIn, shape = RoundedCornerShape(50)) { Text("Sign in to RSVP") }
+                }
+                TextButton(onClick = onCalendar) { Text("Add to calendar") }
+            }
+            if (room.guests.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                AvatarStack(room.guests, { null }, 24.dp, 8)
+            }
+        }
     }
 }
 

@@ -3,6 +3,7 @@
     <v-text-field v-model="data.title" label="Title" :placeholder="name" counter="80" maxlength="80" outlined dense />
     <v-textarea v-model="data.description" label="Description" counter="500" maxlength="500" rows="2" auto-grow outlined dense />
     <v-combobox v-model="data.category" :items="categories" label="Category" outlined dense clearable />
+    <v-text-field v-model="data.start_url" label="Start page" placeholder="https://www.youtube.com" hint="Opens in the room's browser when the room starts" persistent-hint outlined dense clearable class="mb-2" />
 
     <div class="subtitle-2 mb-2">Who can find and join this room?</div>
     <v-radio-group v-model="data.visibility" class="mt-0" hide-details>
@@ -31,6 +32,29 @@
         </template>
       </v-radio>
     </v-radio-group>
+
+    <v-divider class="my-4" />
+    <div class="subtitle-2 mb-1"><v-icon small class="mr-1">mdi-calendar-star</v-icon>Watch party</div>
+    <div class="caption text--secondary mb-3">Pick a time and the room starts on its own. People can RSVP and add it to their calendar.</div>
+    <v-text-field
+      v-model="data.scheduled"
+      type="datetime-local"
+      label="Starts at"
+      outlined
+      dense
+      clearable
+      :hint="scheduledHint"
+      persistent-hint
+      class="mb-2"
+    />
+    <v-switch v-model="data.keep_awake" inset dense hide-details class="mt-2">
+      <template v-slot:label>
+        <div>
+          <div>Keep running when empty</div>
+          <div class="caption text--secondary">Otherwise the room sleeps when nobody is in it and wakes up when someone joins.</div>
+        </div>
+      </template>
+    </v-switch>
 
     <template v-if="isAdmin && moderation">
       <v-divider class="my-4" />
@@ -78,6 +102,11 @@ export default class RoomMetaEditor extends Vue {
     hidden: false,
     // eslint-disable-next-line
     owner_id: null as number | null,
+    // eslint-disable-next-line
+    keep_awake: false,
+    scheduled: '' as string | null, // datetime-local value
+    // eslint-disable-next-line
+    start_url: '' as string | null,
   }
 
   saving = false
@@ -102,6 +131,20 @@ export default class RoomMetaEditor extends Vue {
     return this.$store.state.app.branding.home.categories || []
   }
 
+  get scheduledHint(): string {
+    if (!this.data.scheduled) return 'Times are in your time zone'
+    const at = new Date(this.data.scheduled)
+    return isNaN(at.getTime()) ? '' : at.toLocaleString(undefined, { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  }
+
+  // localInput formats a time for a datetime-local input
+  localInput(iso: string | null): string {
+    if (!iso) return ''
+    const d = new Date(iso)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
   get userItems() {
     return this.users.map(u => ({ text: `${u.display_name || u.username} (@${u.username})`, value: u.id }))
   }
@@ -118,6 +161,11 @@ export default class RoomMetaEditor extends Vue {
       hidden: m ? m.hidden : false,
       // eslint-disable-next-line
       owner_id: m ? m.owner_id : null,
+      // eslint-disable-next-line
+      keep_awake: m ? m.keep_awake : false,
+      scheduled: m ? this.localInput(m.scheduled_at) : '',
+      // eslint-disable-next-line
+      start_url: m ? m.start_url : '',
     }
   }
 
@@ -140,6 +188,12 @@ export default class RoomMetaEditor extends Vue {
         description: this.data.description,
         category: this.data.category || '',
         visibility: this.data.visibility,
+        // eslint-disable-next-line
+        keep_awake: this.data.keep_awake,
+        // eslint-disable-next-line
+        scheduled_at: this.data.scheduled ? new Date(this.data.scheduled).toISOString() : '',
+        // eslint-disable-next-line
+        start_url: this.data.start_url || '',
       }
       if (this.isAdmin && this.moderation) {
         update.featured = this.data.featured

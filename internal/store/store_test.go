@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -116,5 +117,50 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 	if err := s.GetSetting("x", &v); err != nil || v.A != 42 {
 		t.Fatalf("got %v %v", v, err)
+	}
+}
+
+func TestRoomMetaScheduleAndRSVPs(t *testing.T) {
+	s := newTestStore(t)
+	u := mkUser(t, s, "alice", RoleUser)
+
+	at := time.Date(2030, 1, 2, 20, 30, 0, 0, time.UTC)
+	m := &RoomMeta{Name: "movie-night", Visibility: VisibilityPublic, ScheduledAt: &at, KeepAwake: true}
+	if err := s.PutRoomMeta(m); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetRoomMeta("movie-night")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ScheduledAt == nil || !got.ScheduledAt.Equal(at) || !got.KeepAwake || got.Sleeping {
+		t.Fatalf("meta = %+v", got)
+	}
+
+	if err := s.SetRoomSleeping("movie-night", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRoomSleeping("no-meta-yet", true); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetRoomMeta("no-meta-yet"); got == nil || !got.Sleeping || got.Visibility != VisibilityPrivate {
+		t.Fatalf("sleeping room without meta = %+v", got)
+	}
+
+	if err := s.SetRSVP("movie-night", u.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRSVP("movie-night", u.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	rs, err := s.RSVPs()
+	if err != nil || len(rs["movie-night"]) != 1 {
+		t.Fatalf("RSVPs = %v, %v", rs, err)
+	}
+	if err := s.DeleteRoomMeta("movie-night"); err != nil {
+		t.Fatal(err)
+	}
+	if rs, _ := s.RSVPs(); len(rs["movie-night"]) != 0 {
+		t.Fatal("RSVPs outlive their room")
 	}
 }

@@ -49,6 +49,14 @@ type ProxyManagerCtx struct {
 	branding *branding.Manager
 	auth     *auth.Manager
 	loginURL string
+
+	// wake starts a sleeping room by name, it is true when it does
+	wake func(ctx context.Context, name string) bool
+}
+
+// SetWaker lets visitors of a room's link wake it up when it sleeps.
+func (p *ProxyManagerCtx) SetWaker(wake func(ctx context.Context, name string) bool) {
+	p.wake = wake
 }
 
 func New(rooms *room.RoomManagerCtx, waitEnabled bool, brandingManager *branding.Manager, authManager *auth.Manager, loginURL string) *ProxyManagerCtx {
@@ -309,7 +317,11 @@ func (p *ProxyManagerCtx) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else if proxy.paused {
 			p.RoomPaused(w, r, p.waitEnabled)
 		} else if !proxy.running {
-			p.RoomNotRunning(w, r, p.waitEnabled)
+			if p.wake != nil && isPageRequest(r) && p.wake(r.Context(), path.Base(prefix)) {
+				p.RoomNotReady(w, r, p.waitEnabled)
+			} else {
+				p.RoomNotRunning(w, r, p.waitEnabled)
+			}
 		} else {
 			p.RoomNotReady(w, r, p.waitEnabled)
 		}

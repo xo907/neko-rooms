@@ -27,12 +27,14 @@
             <v-icon size="48">mdi-play-circle-outline</v-icon>
           </div>
           <div class="nr-preview-overlay" v-if="room.can_join">
-            <v-btn large color="primary" depressed :disabled="!room.running" @click="join" class="px-8">
-              {{ room.running ? 'Join room' : 'Room is not running' }}
+            <v-btn large color="primary" depressed :disabled="!canJoinNow" @click="join" class="px-8">
+              <v-icon v-if="room.sleeping" left>mdi-weather-night</v-icon>{{ joinLabel }}
             </v-btn>
             <div v-if="room.ready" class="nr-preview-note">
               <span class="nr-dot" />{{ room.viewers }} {{ room.viewers === 1 ? 'person' : 'people' }} watching
             </div>
+            <div v-else-if="room.sleeping" class="nr-preview-note">Asleep while empty, joining wakes it up</div>
+            <div v-else-if="partyAt" class="nr-preview-note">Starts {{ partyRelative }}</div>
           </div>
         </div>
 
@@ -42,11 +44,17 @@
             <div class="nr-room-tags">
               <span v-if="room.ready" class="nr-pill-chip is-live"><span class="nr-dot" />Live</span>
               <span v-else-if="room.paused" class="nr-pill-chip is-warn">Paused</span>
+              <span v-else-if="room.sleeping" class="nr-pill-chip"><v-icon>mdi-weather-night</v-icon>Sleeping</span>
               <span v-else class="nr-pill-chip">Offline</span>
+              <span v-if="partyAt && !room.ready" class="nr-pill-chip is-accent"><v-icon>mdi-calendar-star</v-icon>Watch party {{ partyRelative }}</span>
               <span class="nr-pill-chip"><v-icon>{{ visibilityIcon }}</v-icon>{{ room.visibility }}</span>
               <span v-if="room.category" class="nr-pill-chip">{{ room.category }}</span>
               <span v-if="room.featured" class="nr-pill-chip"><v-icon>mdi-star-outline</v-icon>Featured</span>
               <span v-if="room.hidden" class="nr-pill-chip is-danger">Hidden by moderator</span>
+            </div>
+            <div v-if="room.now_playing" class="nr-now-playing">
+              <span class="nr-eq"><i /><i /><i /></span>
+              <span class="text-truncate"><span class="nr-now-label">Now playing</span>{{ room.now_playing }}</span>
             </div>
             <div class="nr-room-host" v-if="room.owner">
               <UserAvatar :user="room.owner" :size="20" />
@@ -62,6 +70,28 @@
       </main>
 
       <aside class="nr-room-side">
+        <section v-if="partyAt" class="nr-panel nr-party">
+          <div class="nr-panel-head">
+            <span><v-icon small class="mr-1">mdi-calendar-star</v-icon>Watch party</span>
+            <span class="nr-panel-count">{{ room.rsvps }} going</span>
+          </div>
+          <div class="nr-party-when">{{ partyDate }}</div>
+          <div class="nr-party-rel">{{ room.ready ? 'Happening now' : 'Starts ' + partyRelative }}</div>
+          <div class="d-flex flex-wrap mt-4" style="gap: 8px">
+            <v-btn v-if="user" small depressed :color="room.going ? 'primary' : undefined" :outlined="!room.going" :loading="rsvping" @click="rsvp(!room.going)">
+              <v-icon left small>{{ room.going ? 'mdi-check' : 'mdi-hand-wave-outline' }}</v-icon>{{ room.going ? 'Going' : 'I am going' }}
+            </v-btn>
+            <v-btn v-else small outlined :to="{ name: 'login', query: { redirect: $route.fullPath } }">Sign in to RSVP</v-btn>
+            <v-btn small text :href="calendarUrl">
+              <v-icon left small>mdi-calendar-plus</v-icon>Add to calendar
+            </v-btn>
+          </div>
+          <div v-if="room.guests.length" class="nr-party-guests">
+            <UserAvatar v-for="g in room.guests.slice(0, 8)" :key="g" :name="g" :size="24" :title="g" />
+            <span v-if="room.guests.length > 8" class="nr-panel-count">+{{ room.guests.length - 8 }}</span>
+          </div>
+        </section>
+
         <section class="nr-panel">
           <div class="nr-panel-head">
             <span>In this room</span>
@@ -75,7 +105,7 @@
             </li>
           </ul>
           <p v-else class="nr-panel-empty">
-            {{ room.ready ? 'Nobody is here yet. Be the first!' : 'The room is not running right now.' }}
+            {{ room.ready ? 'Nobody is here yet. Be the first!' : room.sleeping ? 'The room is asleep. Join to wake it up.' : 'The room is not running right now.' }}
           </p>
         </section>
 
@@ -203,6 +233,61 @@
   gap: 6px;
   .nr-pill-chip { text-transform: capitalize; }
 }
+.nr-pill-chip.is-accent {
+  color: var(--nr-primary);
+  border-color: color-mix(in srgb, var(--nr-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--nr-primary) 10%, transparent);
+  .v-icon { color: inherit !important; }
+}
+.nr-now-playing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.nr-now-label {
+  margin-right: 8px;
+  color: var(--nr-muted);
+  font-weight: 400;
+}
+.nr-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  flex: none;
+  i {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--nr-primary);
+    animation: nr-eq 1s ease-in-out infinite;
+    &:nth-child(2) { animation-delay: -.4s; }
+    &:nth-child(3) { animation-delay: -.7s; }
+  }
+}
+@keyframes nr-eq {
+  0%, 100% { height: 4px; }
+  50% { height: 14px; }
+}
+.nr-party-when {
+  font-size: 17px;
+  font-weight: 600;
+}
+.nr-party-rel {
+  margin-top: 2px;
+  color: var(--nr-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.nr-party-guests {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 14px;
+}
 .nr-room-host {
   display: flex;
   align-items: center;
@@ -293,7 +378,7 @@
 <script lang="ts">
 import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
 import { api, errorMessage, Room, RoomMeta, User } from '@/api-ext'
-import { copyText, inviteLink, joinRoom, roomLink } from '@/utils/join'
+import { copyText, inviteLink, joinRoom, relativeTime, roomLink } from '@/utils/join'
 import UserAvatar from '@/components/community/UserAvatar.vue'
 import RoomMetaEditor from '@/components/community/RoomMetaEditor.vue'
 import RoomActionBtn from '@/components/RoomActionBtn.vue'
@@ -317,6 +402,7 @@ export default class RoomPage extends Vue {
   tick = Date.now()
   copied = false
   inviteCopied = false
+  rsvping = false
 
   private timer = 0
 
@@ -346,6 +432,51 @@ export default class RoomPage extends Vue {
 
   get previewStyle() {
     return { background: 'radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--nr-primary) 18%, transparent), transparent 60%), linear-gradient(135deg, var(--nr-surface), var(--nr-bg))' }
+  }
+
+  get partyAt(): Date | null {
+    return this.room && this.room.scheduled_at ? new Date(this.room.scheduled_at) : null
+  }
+
+  get partyDate(): string {
+    return this.partyAt ? this.partyAt.toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''
+  }
+
+  get partyRelative(): string {
+    return this.partyAt ? relativeTime(this.partyAt, this.tick) : ''
+  }
+
+  // a party that is on can be joined, which starts the room
+  get partyOn(): boolean {
+    return !!this.partyAt && this.partyAt.getTime() - this.tick < 2 * 60000
+  }
+
+  get canJoinNow(): boolean {
+    return !!this.room && (this.room.running || this.room.sleeping || this.partyOn)
+  }
+
+  get joinLabel(): string {
+    if (!this.room) return ''
+    if (this.room.running) return 'Join room'
+    if (this.room.sleeping || this.partyOn) return 'Wake up & join'
+    if (this.partyAt) return 'Starts ' + this.partyRelative
+    return 'Room is not running'
+  }
+
+  get calendarUrl(): string {
+    return this.room ? api.calendarUrl(this.room.name, this.inviteCode || undefined) : ''
+  }
+
+  async rsvp(going: boolean) {
+    if (!this.room) return
+    this.rsvping = true
+    try {
+      this.room = await api.rsvp(this.room.name, going, this.inviteCode || undefined)
+    } catch (e) {
+      this.$swal({ icon: 'error', title: 'Unable to RSVP', text: errorMessage(e) })
+    } finally {
+      this.rsvping = false
+    }
   }
 
   get visibilityIcon() {

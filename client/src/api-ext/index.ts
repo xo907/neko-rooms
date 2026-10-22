@@ -93,6 +93,13 @@ export interface Room {
   has_thumbnail: boolean
   created_at: string
   invite_code?: string
+  keep_awake?: boolean
+  now_playing?: string // title of the open page
+  sleeping: boolean // stopped while empty, joining wakes it
+  scheduled_at: string | null // watch party
+  rsvps: number
+  going: boolean
+  guests: string[]
 }
 
 export interface RoomMeta {
@@ -105,6 +112,10 @@ export interface RoomMeta {
   featured: boolean
   hidden: boolean
   invite_code?: string
+  keep_awake: boolean
+  sleeping: boolean
+  scheduled_at: string | null
+  start_url: string
 }
 
 export interface RoomMetaUpdate {
@@ -115,6 +126,19 @@ export interface RoomMetaUpdate {
   featured?: boolean
   hidden?: boolean
   owner_id?: number
+  keep_awake?: boolean
+  scheduled_at?: string // RFC 3339, empty to cancel
+  start_url?: string // page opened when the room starts
+}
+
+export interface Integrations {
+  public_url: string
+  discord_webhook: string
+  notify_live: boolean
+  notify_watching: boolean
+  notify_schedule: boolean
+  auto_sleep_minutes: number
+  now_playing: boolean
 }
 
 export interface Friend {
@@ -326,8 +350,14 @@ export const api = {
   // community
   directory: () => http.get<Room[]>('/public/rooms').then(r => r.data),
   room: (name: string, invite?: string) => http.get<Room>('/public/rooms/' + encodeURIComponent(name), { params: invite ? { invite } : {} }).then(r => r.data),
-  // eslint-disable-next-line
-  join: (name: string, invite?: string, displayName?: string) => http.post<{ url: string }>('/public/rooms/' + encodeURIComponent(name) + '/join', { invite, display_name: displayName }).then(r => r.data.url),
+  // the url is missing while a sleeping room wakes up
+  join: (name: string, invite?: string, displayName?: string) =>
+    http.post<{ url?: string; waking?: boolean }>('/public/rooms/' + encodeURIComponent(name) + '/join', { invite, display_name: displayName }).then(r => r.data),
+  wake: (name: string, invite?: string) => http.post('/public/rooms/' + encodeURIComponent(name) + '/wake', { invite }),
+  rsvp: (name: string, going: boolean, invite?: string) =>
+    http.request<Room>({ method: going ? 'POST' : 'DELETE', url: '/public/rooms/' + encodeURIComponent(name) + '/rsvp', params: invite ? { invite } : {} }).then(r => r.data),
+  calendarUrl: (name: string, invite?: string) =>
+    basePath + '/api/public/rooms/' + encodeURIComponent(name) + '/event.ics' + (invite ? '?invite=' + encodeURIComponent(invite) : ''),
   thumbnailUrl: (name: string, bust: number, invite?: string) =>
     basePath + '/api/public/rooms/' + encodeURIComponent(name) + '/thumbnail.jpg?t=' + bust + (invite ? '&invite=' + encodeURIComponent(invite) : ''),
 
@@ -353,6 +383,9 @@ export const api = {
   revokeUserSessions: (id: number) => http.delete('/admin/users/' + id + '/sessions'),
   adminRooms: () => http.get<Room[]>('/admin/rooms').then(r => r.data),
   policy: () => http.get<Policy>('/admin/policy').then(r => r.data),
+  integrations: () => http.get<Integrations>('/admin/integrations').then(r => r.data),
+  updateIntegrations: (i: Integrations) => http.put<Integrations>('/admin/integrations', i).then(r => r.data),
+  testIntegrations: (i: Integrations) => http.post('/admin/integrations/test', i),
   updatePolicy: (p: Policy) => http.put<Policy>('/admin/policy', p).then(r => r.data),
   brandingDefaults: () => http.get<Branding>('/admin/branding/defaults').then(r => r.data),
   updateBranding: (b: Branding) => http.put<Branding>('/admin/branding', b).then(r => r.data),

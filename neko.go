@@ -118,10 +118,10 @@ type MainCtx struct {
 	brandingManager  *branding.Manager
 	communityService *community.Service
 	roomManager      *room.RoomManagerCtx
-	pullManager   *pull.PullManagerCtx
-	apiManager    *api.ApiManagerCtx
-	proxyManager  *proxy.ProxyManagerCtx
-	serverManager *server.ServerManagerCtx
+	pullManager      *pull.PullManagerCtx
+	apiManager       *api.ApiManagerCtx
+	proxyManager     *proxy.ProxyManagerCtx
+	serverManager    *server.ServerManagerCtx
 }
 
 func (main *MainCtx) Preflight() {
@@ -196,6 +196,7 @@ func (main *MainCtx) Start() {
 		main.authManager,
 		adminBase+"/",
 	)
+	main.proxyManager.SetWaker(main.communityService.WakeByName)
 	main.proxyManager.Start()
 
 	main.serverManager = server.New(

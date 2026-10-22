@@ -33,6 +33,11 @@ func New(rooms types.RoomManager, pull types.PullManager, authManager *auth.Mana
 		logger.Err(err).Msg("unable to load fonts, link preview images are disabled")
 	}
 
+	communityService.SetBrand(func() (string, string) {
+		b := brandingManager.Get()
+		return b.AppName, b.Theme.Dark.Primary
+	})
+
 	return &ApiManagerCtx{
 		logger:    logger,
 		og:        renderer,
@@ -67,7 +72,15 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 		r.Get("/{roomName}", manager.publicRoom)
 		r.Post("/{roomName}/join", manager.publicRoomJoin)
 		r.Get("/{roomName}/thumbnail.jpg", manager.publicRoomThumbnail)
+		r.Post("/{roomName}/wake", manager.publicRoomWake)
+		r.Post("/{roomName}/rsvp", manager.publicRoomRSVP)
+		r.Delete("/{roomName}/rsvp", manager.publicRoomRSVP)
+		r.Get("/{roomName}/event.ics", manager.publicRoomCalendar)
 	})
+
+	r.Get("/public/live/{roomName}/events", manager.liveEvents)
+	r.Post("/public/live/{roomName}/{action}", manager.liveAction)
+	r.Post("/public/live/{roomName}/queue/{itemId}/{action}", manager.liveAction)
 
 	r.Get("/public/og/site.png", manager.ogSiteImage)
 	r.Get("/public/og/rooms/{roomName}", manager.ogRoomImage)
@@ -178,6 +191,10 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 
 			r.Get("/policy", manager.adminPolicyGet)
 			r.Put("/policy", manager.adminPolicySet)
+
+			r.Get("/integrations", manager.adminIntegrationsGet)
+			r.Put("/integrations", manager.adminIntegrationsSet)
+			r.Post("/integrations/test", manager.adminIntegrationsTest)
 
 			r.Get("/branding/defaults", manager.brandingDefaults)
 			r.Put("/branding", manager.adminBrandingSet)

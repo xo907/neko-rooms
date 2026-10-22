@@ -76,6 +76,20 @@ func Generate(policies types.BrowserPolicyContent) (string, error) {
 		policiesTmpl["RestoreOnStartup"] = 5
 	}
 
+	//
+	// Homepage
+	//
+
+	if policies.Homepage != "" {
+		policiesTmpl["HomepageLocation"] = policies.Homepage
+		policiesTmpl["HomepageIsNewTabPage"] = false
+		if !policies.PersistentData {
+			// Open a list of URLs
+			policiesTmpl["RestoreOnStartup"] = 4
+			policiesTmpl["RestoreOnStartupURLs"] = []any{policies.Homepage}
+		}
+	}
+
 	data, err := json.MarshalIndent(policiesTmpl, "", "  ")
 	if err != nil {
 		return "", err

@@ -47,7 +47,7 @@ func TestInjectHTML(t *testing.T) {
 
 	p := &ProxyManagerCtx{branding: bm, loginURL: "/"}
 	page := `<!DOCTYPE html><html><head><title>n.eko</title><link rel="icon" href="favicon.ico"></head><body><div id="neko"></div></body></html>`
-	out := string(p.injectHTML([]byte(page), "Movie night"))
+	out := string(p.injectHTML([]byte(page), "movie-night", "Movie night"))
 
 	for _, want := range []string{
 		"<title>Movie night · xo</title>",
@@ -72,7 +72,7 @@ func TestInjectHTML(t *testing.T) {
 	b.Rooms.SiteColors = false
 	b.Rooms.PageTitle = ""
 	bm.Set(b)
-	out = string(p.injectHTML([]byte(page), "Movie night"))
+	out = string(p.injectHTML([]byte(page), "movie-night", "Movie night"))
 	if strings.Contains(out, "data-nr-branded") || strings.Contains(out, "!important") || !strings.Contains(out, "<title>n.eko</title>") {
 		t.Error("expected no logo, color or title changes")
 	}

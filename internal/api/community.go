@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -61,6 +62,11 @@ func (manager *ApiManagerCtx) publicRoomJoin(w http.ResponseWriter, r *http.Requ
 	}
 
 	url, err := manager.community.JoinURL(r.Context(), u, chi.URLParam(r, "roomName"), req.Invite, req.DisplayName)
+	if errors.Is(err, community.ErrWaking) {
+		// the room was asleep, it is starting, ask again once it runs
+		writeJSON(w, http.StatusAccepted, map[string]bool{"waking": true})
+		return
+	}
 	if err != nil {
 		manager.writeErr(w, err)
 		return
@@ -93,6 +99,9 @@ type roomMetaRequest struct {
 	Description *string           `json:"description"`
 	Category    *string           `json:"category"`
 	Visibility  *store.Visibility `json:"visibility"`
+	KeepAwake   *bool             `json:"keep_awake"`
+	ScheduledAt *string           `json:"scheduled_at"` // RFC 3339, empty to cancel
+	StartURL    *string           `json:"start_url"`
 
 	// admin only
 	Featured *bool  `json:"featured"`
@@ -127,6 +136,40 @@ func (manager *ApiManagerCtx) applyRoomMeta(u *store.User, meta *store.RoomMeta,
 			return errBadRequest("public rooms are not allowed for your account")
 		}
 		meta.Visibility = *req.Visibility
+	}
+
+	if req.KeepAwake != nil {
+		meta.KeepAwake = *req.KeepAwake
+	}
+	if req.StartURL != nil {
+		meta.StartURL = ""
+		if strings.TrimSpace(*req.StartURL) != "" {
+			link, err := community.CleanURL(*req.StartURL)
+			if err != nil {
+				return errBadRequest("start page: " + err.Error())
+			}
+			meta.StartURL = link
+		}
+	}
+	if req.ScheduledAt != nil {
+		if *req.ScheduledAt == "" {
+			meta.ScheduledAt = nil
+		} else {
+			at, err := time.Parse(time.RFC3339, *req.ScheduledAt)
+			if err != nil {
+				return errBadRequest("invalid watch party time")
+			}
+			at = at.UTC().Truncate(time.Minute)
+			if meta.ScheduledAt == nil || !meta.ScheduledAt.Equal(at) {
+				if at.Before(time.Now().Add(-time.Minute)) {
+					return errBadRequest("the watch party must start in the future")
+				}
+				if at.After(time.Now().AddDate(1, 0, 0)) {
+					return errBadRequest("the watch party must be within a year")
+				}
+			}
+			meta.ScheduledAt = &at
+		}
 	}
 
 	if req.Featured != nil || req.Hidden != nil || req.OwnerID != nil {
@@ -203,6 +246,7 @@ func (manager *ApiManagerCtx) roomMetaUpdate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	before := meta.ScheduledAt
 	if err := manager.applyRoomMeta(auth.UserFromContext(r.Context()), meta, req); err != nil {
 		var br badRequest
 		if errors.As(err, &br) {
@@ -216,6 +260,14 @@ func (manager *ApiManagerCtx) roomMetaUpdate(w http.ResponseWriter, r *http.Requ
 	if err := manager.store.PutRoomMeta(meta); err != nil {
 		manager.writeErr(w, err)
 		return
+	}
+
+	// a new party time is announced, a cancelled party forgets who was going
+	if meta.ScheduledAt == nil && before != nil {
+		manager.store.ClearRSVPs(meta.Name)
+	}
+	if meta.ScheduledAt != nil && (before == nil || !before.Equal(*meta.ScheduledAt)) {
+		manager.community.ScheduleChanged(r.Context(), meta)
 	}
 
 	manager.auth.Audit(r, "room.update", meta.Name, "visibility="+string(meta.Visibility))

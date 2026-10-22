@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
@@ -97,11 +98,31 @@ fun AvatarStack(names: List<String>, photoOf: (String) -> String?, size: Dp = 24
     }
 }
 
+// relativeTime says when something happens, e.g. "in 2 hours"
+fun relativeTime(at: java.time.Instant, now: java.time.Instant = java.time.Instant.now()): String {
+    val mins = java.time.Duration.between(now, at).toMinutes()
+    fun plural(n: Long, unit: String) = if (n == 1L) "in 1 $unit" else "in $n ${unit}s"
+    return when {
+        mins <= 0 -> "now"
+        mins < 60 -> plural(mins, "minute")
+        mins < 36 * 60 -> plural((mins + 30) / 60, "hour")
+        else -> plural((mins + 720) / 1440, "day")
+    }
+}
+
+fun partyDate(at: java.time.Instant): String =
+    java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)
+        .withZone(java.time.ZoneId.systemDefault())
+        .format(at)
+
 @Composable
 fun StatusPill(room: Room, modifier: Modifier = Modifier) {
+    val party = room.partyAt
     val (label, color) = when {
         room.ready -> "Live" to Live
         room.paused -> "Paused" to Color(0xFFFBBF24)
+        party != null -> "Party ${relativeTime(party)}" to MaterialTheme.colorScheme.primary
+        room.sleeping -> "Sleeping" to Color(0xFF93C5FD)
         else -> "Offline" to Color(0xFFA1A1AA)
     }
     Row(
@@ -164,6 +185,10 @@ fun RoomCard(room: Room, thumb: String?, photoOf: (String) -> String?, ownerPhot
             RoomThumb(room, thumb)
             Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 8.dp)) {
                 Text(room.displayTitle, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (room.nowPlaying.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    NowPlaying(room.nowPlaying)
+                }
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val owner = room.owner
@@ -185,6 +210,15 @@ fun RoomCard(room: Room, thumb: String?, photoOf: (String) -> String?, ownerPhot
                 }
             }
         }
+    }
+}
+
+@Composable
+fun NowPlaying(title: String, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.PlayArrow, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

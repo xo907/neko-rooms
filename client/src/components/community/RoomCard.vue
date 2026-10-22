@@ -20,6 +20,8 @@
       <div class="nr-thumb-top">
         <span v-if="room.ready" class="nr-glass-chip nr-glass-chip--live"><span class="nr-live-dot" />Live</span>
         <span v-else-if="room.paused" class="nr-glass-chip">Paused</span>
+        <span v-else-if="partyAt" class="nr-glass-chip nr-glass-chip--party"><v-icon x-small>mdi-calendar-star</v-icon>{{ partyLabel }}</span>
+        <span v-else-if="room.sleeping" class="nr-glass-chip"><v-icon x-small>mdi-weather-night</v-icon>Sleeping</span>
         <span v-else class="nr-glass-chip">Offline</span>
         <span v-if="room.ready" class="nr-glass-chip">
           <v-icon x-small>mdi-eye-outline</v-icon>{{ room.viewers }}
@@ -59,6 +61,9 @@
         </template>
       </div>
 
+      <div v-if="room.now_playing" class="nr-room-playing text-truncate" :title="room.now_playing">
+        <v-icon x-small>mdi-play</v-icon>{{ room.now_playing }}
+      </div>
       <div v-if="!compact && room.description" class="nr-room-desc">{{ room.description }}</div>
 
       <div class="nr-room-foot">
@@ -66,7 +71,7 @@
           <UserAvatar v-for="m in room.members.slice(0, 5)" :key="'m' + m" :name="m" :src="avatarOf(m)" :size="24" ring tooltip />
           <span v-if="room.members.length > 5" class="nr-more">+{{ room.members.length - 5 }}</span>
         </div>
-        <span v-else class="nr-empty-note">{{ room.ready ? 'Nobody here yet' : 'Not running' }}</span>
+        <span v-else class="nr-empty-note">{{ emptyNote }}</span>
         <span class="flex-grow-1" />
         <v-btn v-if="room.can_manage" icon small class="nr-manage" :to="{ name: 'room', params: { name: room.name } }" @click.stop title="Manage room">
           <v-icon small>mdi-tune-variant</v-icon>
@@ -76,10 +81,10 @@
           color="primary"
           depressed
           small
-          :disabled="!room.running"
+          :disabled="!room.running && !room.sleeping"
           @click.stop="$emit('join', room, { from: $refs.thumb, image: showThumb ? thumbUrl : '' })"
         >
-          Join
+          {{ room.sleeping ? 'Wake & join' : 'Join' }}
         </v-btn>
       </div>
     </div>
@@ -183,6 +188,7 @@
   .v-icon { color: inherit !important; font-size: 12px !important; }
   &.nr-glass-chip--icon { width: 22px; padding: 0; justify-content: center; }
   &.nr-glass-chip--live { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nr-primary) 45%, transparent); }
+  &.nr-glass-chip--party { color: var(--nr-primary); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nr-primary) 45%, transparent); .v-icon { color: inherit !important; } }
 }
 .nr-live-dot {
   width: 6px;
@@ -216,6 +222,16 @@
   color: var(--nr-muted);
 }
 .nr-sep { margin: 0 6px; color: var(--nr-subtle); }
+.nr-room-playing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--nr-text);
+  .v-icon { color: var(--nr-primary) !important; flex: none; }
+}
 .nr-room-desc {
   margin-top: 8px;
   font-size: 13px;
@@ -250,6 +266,7 @@
 import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
 import { api, Room } from '@/api-ext'
 import UserAvatar from '@/components/community/UserAvatar.vue'
+import { relativeTime } from '@/utils/join'
 
 // subtle hue shifts, so placeholder thumbnails are told apart without
 // turning the grid into a rainbow
@@ -308,6 +325,22 @@ export default class RoomCard extends Vue {
     const r = el.getBoundingClientRect()
     el.style.setProperty('--mx', `${e.clientX - r.left}px`)
     el.style.setProperty('--my', `${e.clientY - r.top}px`)
+  }
+
+  get partyAt(): Date | null {
+    if (!this.room.scheduled_at || this.room.ready) return null
+    return new Date(this.room.scheduled_at)
+  }
+
+  get partyLabel(): string {
+    return this.partyAt ? relativeTime(this.partyAt, this.tick || Date.now()) : ''
+  }
+
+  get emptyNote(): string {
+    if (this.room.ready) return 'Nobody here yet'
+    if (this.partyAt && this.room.rsvps) return this.room.rsvps + ' going'
+    if (this.room.sleeping) return 'Asleep, joining wakes it'
+    return 'Not running'
   }
 
   get categoryIcon() {

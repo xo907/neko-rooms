@@ -72,7 +72,7 @@ func (p *ProxyManagerCtx) injectBranding(res *http.Response, roomName string) er
 	}
 
 	if len(body) <= maxInjectSize {
-		body = p.injectHTML(body, p.roomTitle(roomName))
+		body = p.injectHTML(body, roomName, p.roomTitle(roomName))
 	}
 
 	res.Body = io.NopCloser(bytes.NewReader(body))
@@ -174,7 +174,7 @@ const avatarScript = `(function () {
   }, 500);
 })();`
 
-func (p *ProxyManagerCtx) injectHTML(body []byte, roomTitle string) []byte {
+func (p *ProxyManagerCtx) injectHTML(body []byte, roomName, roomTitle string) []byte {
 	b := p.branding.Get()
 	rb := b.Rooms
 	year := time.Now().Year()
@@ -243,6 +243,7 @@ func (p *ProxyManagerCtx) injectHTML(body []byte, roomTitle string) []byte {
 		scripts.WriteString("<script>")
 		fmt.Fprintf(&scripts, avatarScript, api)
 		scripts.WriteString("</script>")
+		scripts.WriteString(p.extrasScript(roomName))
 	}
 	if rb.CustomJS != "" {
 		scripts.WriteString("<script>" + strings.ReplaceAll(rb.CustomJS, "</script", `<\/script`) + "</script>")

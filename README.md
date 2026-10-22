@@ -30,6 +30,16 @@ Simple room management system for [n.eko](https://github.com/m1k1o/neko). Self h
 
 Builds this checkout, starts it on `http://localhost:8188` and prints the tailnet URLs. See [docs/local.md](./docs/local.md).
 
+## Watch together
+
+- **Now playing**: room cards, link previews and Discord posts show the title of the page open in the room.
+- **Reactions, raised hands and an up next queue** inside rooms (web and Android): send emoji that float over everyone's video, raise a hand to get control next, add links everyone can vote on and play the top one.
+- **Watch parties**: give a room a start time, people RSVP and add it to their calendar, the room starts on its own.
+- **Sleep when empty**: rooms nobody is in stop after 30 minutes (Admin → Settings) and wake up when someone joins.
+- **Discord**: paste a channel webhook in Admin → Settings to post when public rooms go live, people start watching, or a party is planned.
+- **Room templates**: YouTube, Twitch, music or movie night rooms with a start page (and ad blocking where browser policies are available).
+- **Link previews**: share `yoursite/r/room` links and chat apps show the room, its host and what is on.
+
 ## Android app
 
 **WatchParty** is a native Android app for any neko-rooms server: rooms list, sign in, friends, profile photos and a native room player with chat, remote control, touch input and keyboard.

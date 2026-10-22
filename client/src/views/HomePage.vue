@@ -361,7 +361,8 @@ export default class HomePage extends Vue {
   get filtered(): Room[] {
     const q = (this.search || '').trim().toLowerCase()
     return this.rooms.filter(r => {
-      if (!r.running && !r.is_owner && !this.home.show_offline) return false
+      // sleeping rooms and upcoming parties are as good as running ones
+      if (!r.running && !r.sleeping && !r.scheduled_at && !r.is_owner && !this.home.show_offline) return false
       if (this.category && r.category !== this.category) return false
       if (!q) return true
       return [r.title, r.name, r.description, r.category, r.owner?.username, r.owner?.display_name, ...r.members]
@@ -378,6 +379,7 @@ export default class HomePage extends Vue {
     }
 
     const sections: Section[] = [
+      { key: 'parties', label: 'Upcoming watch parties', icon: 'mdi-calendar-star', color: 'primary', rooms: take(r => !!r.scheduled_at && !r.ready).sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || '')) },
       { key: 'featured', label: this.home.featured_label || 'Featured', icon: 'mdi-star', color: 'amber', rooms: take(r => r.featured && r.visibility === 'public') },
       { key: 'friends', label: this.home.friends_label || "Friends' rooms", icon: 'mdi-account-heart', color: 'accent', rooms: take(r => r.is_friend || r.friends_inside.length > 0) },
       { key: 'public', label: this.home.public_label || 'Public rooms', icon: 'mdi-earth', color: 'info', rooms: take(r => r.visibility === 'public' && !r.is_owner) },

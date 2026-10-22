@@ -9,6 +9,20 @@
         v-model="valid"
         lazy-validation
       >
+        <div class="nr-templates">
+          <button
+            v-for="t in templates"
+            :key="t.key"
+            type="button"
+            class="nr-template"
+            :class="{ 'is-active': template === t.key }"
+            @click="useTemplate(t.key)"
+          >
+            <v-icon>{{ t.icon }}</v-icon>
+            <span class="nr-template-name">{{ t.name }}</span>
+            <span class="nr-template-note">{{ t.note }}</span>
+          </button>
+        </div>
         <v-row>
           <v-col cols="12" class="pb-0">
             <v-text-field label="Title" v-model="meta.title" placeholder="Movie night, Lo-fi beats, ..." counter="80" maxlength="80" />
@@ -24,6 +38,9 @@
               <template v-slot:item="{ item }"><v-icon small class="mr-2">{{ item.icon }}</v-icon>{{ item.text }}</template>
               <template v-slot:selection="{ item }"><v-icon small class="mr-2">{{ item.icon }}</v-icon>{{ item.text }}</template>
             </v-select>
+          </v-col>
+          <v-col cols="12" class="py-0">
+            <v-text-field label="Start page" v-model="meta.start_url" placeholder="https://www.youtube.com" hint="Opens in the room's browser when it starts" persistent-hint clearable />
           </v-col>
         </v-row>
         <v-row align="center">
@@ -558,6 +575,38 @@
   </v-card>
 </template>
 
+<style lang="scss" scoped>
+.nr-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.nr-template {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px;
+  border-radius: calc(var(--nr-radius, 12px) * 1.1);
+  border: 1px solid var(--nr-line, rgba(255, 255, 255, .1));
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .18s, background .18s;
+  .v-icon { margin-bottom: 6px; color: var(--nr-muted) !important; }
+  &:hover { background: var(--nr-hover, rgba(255, 255, 255, .04)); }
+  &.is-active {
+    border-color: color-mix(in srgb, var(--nr-primary) 60%, transparent);
+    background: color-mix(in srgb, var(--nr-primary) 8%, transparent);
+    .v-icon { color: var(--nr-primary) !important; }
+  }
+}
+.nr-template-name { font-weight: 600; font-size: 13.5px; }
+.nr-template-note { font-size: 11.5px; color: var(--nr-muted); line-height: 1.3; }
+</style>
+
 <script lang="ts">
 import { Vue, Component, Ref, Watch } from 'vue-property-decorator'
 import { AxiosError } from 'axios'
@@ -571,6 +620,15 @@ import {
   RoomMount,
   RoomMountTypeEnum,
 } from '@/api/index'
+
+// room templates fill in the form for common kinds of rooms
+const TEMPLATES = [
+  { key: 'blank', name: 'Blank', note: 'An empty browser', icon: 'mdi-web', title: '', category: '', url: '', extensions: [] as string[] },
+  { key: 'youtube', name: 'YouTube', note: 'Ad block & SponsorBlock', icon: 'mdi-youtube', title: 'YouTube together', category: 'Movies', url: 'https://www.youtube.com', extensions: ['ublock', 'sponsorblock'] },
+  { key: 'twitch', name: 'Twitch', note: 'Watch streams with ad block', icon: 'mdi-twitch', title: 'Twitch watch party', category: 'Gaming', url: 'https://www.twitch.tv', extensions: ['ublock'] },
+  { key: 'music', name: 'Music', note: 'Listen together', icon: 'mdi-music', title: 'Listening party', category: 'Music', url: 'https://music.youtube.com', extensions: ['ublock'] },
+  { key: 'movie', name: 'Movie night', note: 'Plan it as a watch party', icon: 'mdi-movie-open-outline', title: 'Movie night', category: 'Movies', url: '', extensions: ['ublock'] },
+]
 
 export type VForm = Vue & {
   validate: () => boolean;
@@ -589,6 +647,37 @@ export default class RoomsCreate extends Vue {
     description: '',
     category: '' as string | null,
     visibility: 'private',
+    // eslint-disable-next-line
+    start_url: '' as string | null,
+  }
+
+  public template = 'blank'
+
+  get templates() {
+    return TEMPLATES
+  }
+
+  // useTemplate fills the form for a kind of room
+  useTemplate(key: string) {
+    const t = TEMPLATES.find(t => t.key === key)
+    if (!t) return
+    const previous = TEMPLATES.find(p => p.key === this.template)
+    this.template = key
+
+    // only replace what the previous template filled in
+    if (!this.meta.title || (previous && this.meta.title === previous.title)) this.meta.title = t.title
+    if (!this.meta.category || (previous && this.meta.category === previous.category)) this.meta.category = t.category
+    // eslint-disable-next-line
+    this.meta.start_url = t.url
+
+    // ad blocking and friends, where browser policies work
+    if (this.storageEnabled && this.browserPolicyConfig) {
+      const wanted = this.browserPolicyExtensions
+        .filter((e: { text: string } | undefined) => e && t.extensions.some(name => e.text.toLowerCase().includes(name)))
+        .map((e: { value: BrowserPolicyExtension }) => e.value)
+      this.browserPolicyEnabled = wanted.length > 0
+      this.browserPolicyContent = { ...this.browserPolicyContent, extensions: wanted }
+    }
   }
 
   get categories(): string[] {
@@ -818,7 +907,8 @@ export default class RoomsCreate extends Vue {
           path: this.browserPolicyConfig.path,
           content: this.browserPolicyContent
         } : undefined,
-        meta: { ...this.meta, category: this.meta.category || '' },
+        // eslint-disable-next-line
+        meta: { ...this.meta, category: this.meta.category || '', start_url: this.meta.start_url || '' },
       })
       this.Clear()
       this.$emit('finished', true)
@@ -844,7 +934,9 @@ export default class RoomsCreate extends Vue {
 
   Clear() {
     this._form.resetValidation()
-    this.meta = { title: '', description: '', category: '', visibility: 'private' }
+    // eslint-disable-next-line
+    this.meta = { title: '', description: '', category: '', visibility: 'private', start_url: '' }
+    this.template = 'blank'
     this.data = {
       ...this.$store.state.defaultRoomSettings,
       // eslint-disable-next-line

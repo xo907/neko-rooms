@@ -125,14 +125,26 @@ class Api(private val http: OkHttpClient) {
         return call(Request.Builder().url(u).build()) { json.decodeFromString(Room.serializer(), it) }
     }
 
-    // join returns the room address with credentials
-    suspend fun join(name: String, invite: String?, displayName: String?): HttpUrl {
+    // join returns the room address with credentials, or null while a
+    // sleeping room wakes up (ask again once it runs)
+    suspend fun join(name: String, invite: String?, displayName: String?): HttpUrl? {
         val res = send(
             "POST", "public/rooms/${enc(name)}/join",
             body(JoinRequest.serializer(), JoinRequest(invite, displayName)), JoinResponse.serializer()
         )!!
+        if (res.waking || res.url.isBlank()) return null
         return base!!.resolve(res.url) ?: throw ApiException(0, "Invalid room address")
     }
+
+    suspend fun rsvp(name: String, going: Boolean, invite: String?): Room {
+        val u = url("public/rooms/${enc(name)}/rsvp").newBuilder()
+            .apply { if (invite != null) addQueryParameter("invite", invite) }.build()
+        val req = Request.Builder().url(u).method(if (going) "POST" else "DELETE", if (going) empty else null).build()
+        return call(req) { json.decodeFromString(Room.serializer(), it) }
+    }
+
+    // the api root, for the live channel
+    fun apiRoot(): HttpUrl = url("")
 
     // friends
 

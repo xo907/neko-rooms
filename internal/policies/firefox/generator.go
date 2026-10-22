@@ -54,15 +54,16 @@ func Generate(policies types.BrowserPolicyContent) (string, error) {
 	policiesTmpl.Policies["Preferences"] = Preferences
 	policiesTmpl.Policies["SanitizeOnShutdown"] = !policies.PersistentData
 
-	if policies.PersistentData {
-		policiesTmpl.Policies["Homepage"] = map[string]any{
-			"StartPage": "previous-session",
-		}
-	} else {
-		policiesTmpl.Policies["Homepage"] = map[string]any{
-			"StartPage": "homepage",
-		}
+	homepage := map[string]any{
+		"StartPage": "homepage",
 	}
+	if policies.PersistentData {
+		homepage["StartPage"] = "previous-session"
+	}
+	if policies.Homepage != "" {
+		homepage["URL"] = policies.Homepage
+	}
+	policiesTmpl.Policies["Homepage"] = homepage
 
 	data, err := json.MarshalIndent(policiesTmpl, "", "  ")
 	if err != nil {

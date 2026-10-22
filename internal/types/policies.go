@@ -17,6 +17,7 @@ type BrowserPolicyContent struct {
 	Extensions     []BrowserPolicyExtension `json:"extensions"`
 	DeveloperTools bool                     `json:"developer_tools"`
 	PersistentData bool                     `json:"persistent_data"`
+	Homepage       string                   `json:"homepage,omitempty"` // page the browser opens on
 }
 
 type BrowserPolicyExtension struct {
