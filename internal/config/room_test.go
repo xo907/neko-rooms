@@ -32,3 +32,16 @@ func TestGetRoomUrl(t *testing.T) {
 		t.Errorf("traefik url: got %q", got)
 	}
 }
+
+func TestScreenRegex(t *testing.T) {
+	for _, s := range []string{"1024x576@30", "1280x720@30", "1920x1080@60"} {
+		if !screenRegex.MatchString(s) {
+			t.Errorf("%q should be valid", s)
+		}
+	}
+	for _, s := range []string{"", "1024x576", "1024*576@30", "big@30"} {
+		if screenRegex.MatchString(s) {
+			t.Errorf("%q should be invalid", s)
+		}
+	}
+}

@@ -9,10 +9,18 @@ import (
 )
 
 type RoomsConfig struct {
-	Connections    uint16   `json:"connections"`
-	NekoImages     []string `json:"neko_images"`
-	StorageEnabled bool     `json:"storage_enabled"`
-	UsesMux        bool     `json:"uses_mux"`
+	Connections    uint16       `json:"connections"`
+	NekoImages     []string     `json:"neko_images"`
+	StorageEnabled bool         `json:"storage_enabled"`
+	UsesMux        bool         `json:"uses_mux"`
+	RoomDefaults   RoomDefaults `json:"room_defaults"`
+}
+
+// RoomDefaults are suggested for new rooms, empty values keep client defaults.
+type RoomDefaults struct {
+	Screen        string `json:"screen,omitempty"`
+	VideoCodec    string `json:"video_codec,omitempty"`
+	VideoPipeline string `json:"video_pipeline,omitempty"`
 }
 
 type RoomEntry struct {

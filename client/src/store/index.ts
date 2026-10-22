@@ -31,6 +31,12 @@ export default new Vuex.Store({
   mutations: {
     ROOMS_CONFIG_SET(state: State, roomsConfig: RoomsConfig) {
       Vue.set(state, 'roomsConfig', roomsConfig)
+
+      // server suggested settings for new rooms, e.g. a lighter screen on a Pi
+      const d = roomsConfig.room_defaults || {}
+      if (d.screen) state.defaultRoomSettings.screen = d.screen
+      if (d.video_codec) state.defaultRoomSettings.video_codec = d.video_codec
+      if (d.video_pipeline) state.defaultRoomSettings.video_pipeline = d.video_pipeline
     },
     ROOMS_SET(state: State, roomEntries: RoomEntry[]) {
       Vue.set(state, 'rooms', roomEntries)

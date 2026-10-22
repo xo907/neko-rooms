@@ -30,6 +30,18 @@ Simple room management system for [n.eko](https://github.com/m1k1o/neko). Self h
 
 Builds this checkout, starts it on `http://localhost:8080` and prints the tailnet URLs. See [docs/local.md](./docs/local.md).
 
+## Run on a Raspberry Pi
+
+On a Raspberry Pi 4 or 5 with a **64-bit Raspberry Pi OS or Debian**, run (as a normal user with sudo, or as root):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xo907/neko-rooms/master/local/pi-install.sh | bash
+```
+
+The script installs Docker and Tailscale if needed (and asks you to sign in to your tailnet), then starts neko-rooms with a lightweight Pi profile and prints the address to open. Run the same command again to update. Details and tuning: [docs/local.md](./docs/local.md#raspberry-pi).
+
+On a minimal Debian without `curl`, run `apt install curl` first.
+
 ## Zero-knowledge installation (with HTTPS)
 
 No experience with Docker and reverse proxy? No problem! Follow these steps to set up your Neko Rooms quickly and securely:

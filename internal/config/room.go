@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -13,12 +14,22 @@ import (
 	"github.com/spf13/viper"
 )
 
+var screenRegex = regexp.MustCompile(`^[0-9]{3,4}x[0-9]{3,4}@[0-9]{2,3}$`)
+
 type Traefik struct {
 	Enabled      bool
 	Domain       string
 	Entrypoint   string
 	Certresolver string
 	Port         string // deprecated
+}
+
+// RoomDefaults are suggested for new rooms, e.g. a lighter screen size on
+// small hosts. Empty values keep the client defaults.
+type RoomDefaults struct {
+	Screen        string
+	VideoCodec    string
+	VideoPipeline string
 }
 
 type Room struct {
@@ -43,6 +54,8 @@ type Room struct {
 	InstanceName    string
 	InstanceUrl     *url.URL
 	InstanceNetwork string
+
+	RoomDefaults RoomDefaults
 
 	Traefik Traefik
 }
@@ -144,6 +157,23 @@ func (Room) Init(cmd *cobra.Command) error {
 
 	cmd.PersistentFlags().String("instance.network", "", "docker network that will be used for this instance to communicate with rooms")
 	if err := viper.BindPFlag("instance.network", cmd.PersistentFlags().Lookup("instance.network")); err != nil {
+		return err
+	}
+
+	// Room defaults
+
+	cmd.PersistentFlags().String("room_defaults.screen", "", "screen of new rooms, e.g. 1024x576@30 (empty keeps the default)")
+	if err := viper.BindPFlag("room_defaults.screen", cmd.PersistentFlags().Lookup("room_defaults.screen")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("room_defaults.video_codec", "", "video codec of new rooms: VP8, VP9, AV1, H264 (empty keeps the default)")
+	if err := viper.BindPFlag("room_defaults.video_codec", cmd.PersistentFlags().Lookup("room_defaults.video_codec")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("room_defaults.video_pipeline", "", "custom gstreamer video pipeline of new rooms")
+	if err := viper.BindPFlag("room_defaults.video_pipeline", cmd.PersistentFlags().Lookup("room_defaults.video_pipeline")); err != nil {
 		return err
 	}
 
@@ -257,6 +287,15 @@ func (s *Room) Set() {
 	}
 
 	s.InstanceNetwork = viper.GetString("instance.network")
+
+	s.RoomDefaults = RoomDefaults{
+		Screen:        viper.GetString("room_defaults.screen"),
+		VideoCodec:    strings.ToUpper(viper.GetString("room_defaults.video_codec")),
+		VideoPipeline: viper.GetString("room_defaults.video_pipeline"),
+	}
+	if s.RoomDefaults.Screen != "" && !screenRegex.MatchString(s.RoomDefaults.Screen) {
+		log.Panic().Msg("invalid `room_defaults.screen`, expected WIDTHxHEIGHT@FPS, e.g. 1024x576@30")
+	}
 
 	s.Traefik.Enabled = viper.GetBool("traefik.enabled")
 	if s.Traefik.Enabled {

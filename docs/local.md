@@ -51,6 +51,41 @@ Put overrides in `.env.local` (created on first run, ignored by git):
 
 Users, branding and settings live in the `neko-rooms-local-data` docker volume.
 
+## Raspberry Pi
+
+One command on a 64-bit Raspberry Pi OS or Debian, Pi 4 or 5. Run it as a normal
+user with sudo, or as root (plain Debian often has no sudo). On a minimal
+Debian without curl, `apt install curl` first:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xo907/neko-rooms/master/local/pi-install.sh | bash
+```
+
+It installs Docker and Tailscale when missing, clones this repository to
+`~/neko-rooms` and runs `./local/up.sh --pi`. On a Pi, `up.sh` picks the Pi
+profile ([docker-compose.pi.yml](../docker-compose.pi.yml)) by itself:
+
+- pulls the published multi-arch image instead of building on the Pi
+- offers only Firefox and Chromium rooms (the browsers with arm64 images)
+- starts new rooms at **1024x576, 30 fps**, so the Pi can encode the stream
+  while the room's browser is playing video
+- allows up to 5 rooms and keeps logs small to spare the SD card
+
+Every room runs a full browser and the Pi encodes its video in software, so
+plan for **one active room** on a Pi 4. For smooth playback:
+
+- keep the Pi cool (fan or heatsink case), it slows down when hot
+- use Ethernet for the Pi if you can
+- inside rooms, play videos at 720p or lower
+- want it sharper? add `NEKO_PI_SCREEN=1280x720@30` to `~/neko-rooms/.env.local`
+  and run `./local/up.sh` again (new rooms only; a busy Pi 4 may stutter)
+
+Update: run the install command again, or `cd ~/neko-rooms && git pull && ./local/up.sh`.
+
+The room size can be set on any install with `NEKO_ROOMS_ROOM_DEFAULTS_SCREEN`
+(also `NEKO_ROOMS_ROOM_DEFAULTS_VIDEO_CODEC` and `..._VIDEO_PIPELINE`); it
+pre-fills new rooms, existing rooms keep their settings.
+
 ## Notes
 
 - **Video stays black / keeps connecting:** the room ports (`NEKO_ROOMS_EPR`) must be
