@@ -347,16 +347,9 @@ func (manager *ApiManagerCtx) PageMeta(r *http.Request, base, name, invite strin
 		desc = "Watch together in " + room.Title + " on " + b.AppName + "."
 	}
 	if room.Ready {
-		status := "● Live now"
-		if room.Viewers == 1 {
-			status += " · 1 watching"
-		} else if room.Viewers > 1 {
-			status += " · " + strconv.Itoa(room.Viewers) + " watching"
-		}
 		if room.NowPlaying != "" {
-			status += "\n▶ " + room.NowPlaying
+			desc = "▶ " + room.NowPlaying + "\n" + desc
 		}
-		desc = status + "\n" + desc
 	} else if room.ScheduledAt != nil {
 		status := "📅 Watch party " + StartsIn(*room.ScheduledAt, time.Now())
 		if room.RSVPs > 0 {
