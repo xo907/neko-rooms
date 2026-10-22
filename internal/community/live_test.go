@@ -49,6 +49,19 @@ func TestTickets(t *testing.T) {
 	}
 }
 
+func TestIsEmoji(t *testing.T) {
+	for _, e := range append([]string{"❤️", "👍🏽"}, Reactions...) {
+		if !isEmoji(e) {
+			t.Errorf("%q is not an emoji", e)
+		}
+	}
+	for _, e := range []string{"", "hi", "👍 lol", "<script>", "👍👍👍👍👍👍👍👍👍"} {
+		if isEmoji(e) {
+			t.Errorf("%q is an emoji", e)
+		}
+	}
+}
+
 func TestCleanURL(t *testing.T) {
 	good := map[string]string{
 		"youtube.com/watch?v=1":        "https://youtube.com/watch?v=1",

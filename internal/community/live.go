@@ -30,8 +30,25 @@ const (
 	maxTitle      = 120
 )
 
-// Reactions people can send.
-var Reactions = []string{"👍", "😂", "😮", "❤️", "🔥", "👏", "🎉", "😢"}
+// Reactions the app offers, all of them are neko emotes too, so they show
+// up the same in the browser.
+var Reactions = []string{"👍", "🔥", "👏", "🎉", "😍", "😮", "😭", "💯"}
+
+// isEmoji is true for a short run of emoji, what neko emotes map to
+func isEmoji(s string) bool {
+	n := 0
+	for _, r := range s {
+		n++
+		if n > 8 {
+			return false
+		}
+		if r == 0x200d || r == 0xfe0f || (r >= 0x2190 && r <= 0x2bff) || (r >= 0x1f000 && r <= 0x1faff) {
+			continue
+		}
+		return false
+	}
+	return n > 0
+}
 
 var ErrBadTicket = errors.New("invalid or expired room ticket")
 
@@ -133,6 +150,7 @@ type liveEvent struct {
 	ID      string       `json:"id,omitempty"`
 	Item    *QueueItem   `json:"item,omitempty"`
 	Playing *string      `json:"playing,omitempty"`
+	Via     string       `json:"via,omitempty"` // where a reaction was sent from
 }
 
 type liveSub struct {
@@ -302,16 +320,14 @@ func (s *Service) Subscribe(v *LiveViewer) (<-chan []byte, func()) {
 	}
 }
 
-func (s *Service) React(v *LiveViewer, emoji string) error {
-	ok := false
-	for _, e := range Reactions {
-		if e == emoji {
-			ok = true
-			break
-		}
-	}
-	if !ok {
+// React shares a reaction. via is "neko" for emotes sent with the neko
+// client, browsers already show those.
+func (s *Service) React(v *LiveViewer, emoji, via string) error {
+	if !isEmoji(emoji) {
 		return errors.New("unknown reaction")
+	}
+	if via != "neko" {
+		via = ""
 	}
 
 	s.live.mu.Lock()
@@ -332,7 +348,7 @@ func (s *Service) React(v *LiveViewer, emoji string) error {
 	}
 	r.sent[v.Ticket.ID] = append(recent, now)
 
-	s.live.sendLocked(v.Ticket.Room, liveEvent{Type: "reaction", Emoji: emoji, Name: v.Name, ID: v.Ticket.ID})
+	s.live.sendLocked(v.Ticket.Room, liveEvent{Type: "reaction", Emoji: emoji, Name: v.Name, ID: v.Ticket.ID, Via: via})
 	return nil
 }
 

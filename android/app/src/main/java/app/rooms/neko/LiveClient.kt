@@ -63,7 +63,8 @@ data class Reaction(val key: Long, val emoji: String, val name: String)
 // reactions, raised hands, the up next queue and what is playing.
 class LiveClient(http: OkHttpClient, private val api: HttpUrl, private val room: String, private val ticket: String, private val name: String) {
     companion object {
-        val Reactions = listOf("👍", "😂", "😮", "❤️", "🔥", "👏", "🎉", "😢")
+        // all of them are neko emotes too, so browsers show them the same
+        val Reactions = listOf("👍", "🔥", "👏", "🎉", "😍", "😮", "😭", "💯")
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
