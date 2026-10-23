@@ -2,7 +2,14 @@ package app.rooms
 
 import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.media.AudioManager
+import android.widget.Toast
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalContext
+import app.rooms.data.normalizeServer
+import okhttp3.HttpUrl
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -35,8 +42,12 @@ import app.rooms.ui.SetupScreen
 import app.rooms.ui.WatchPartyTheme
 
 class MainActivity : ComponentActivity() {
+    // a room link the app was opened with, see App
+    val link = mutableStateOf<Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) link.value = intent?.data
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -51,6 +62,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // the app is already open: the link replaces what is on screen
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.data?.let { link.value = it }
     }
 
     // set while a room plays, leaving the app then shrinks it into a
@@ -88,11 +106,37 @@ private fun enc(s: String) = Uri.encode(s)
 private fun NavHostController.room(name: String, invite: String?) =
     navigate("room/${enc(name)}?invite=${enc(invite.orEmpty())}")
 
+// RoomLink is a room on some server, from watchparty://room?server=&name=&invite=
+private data class RoomLink(val server: HttpUrl, val name: String, val invite: String?)
+
+private fun roomLink(uri: Uri): RoomLink? {
+    if (uri.scheme != "watchparty" || uri.host != "room") return null
+    val server = normalizeServer(uri.getQueryParameter("server") ?: return null) ?: return null
+    val name = uri.getQueryParameter("name")?.takeIf { it.isNotBlank() } ?: return null
+    return RoomLink(server, name, uri.getQueryParameter("invite")?.ifBlank { null })
+}
+
 @androidx.compose.runtime.Composable
 private fun App() {
     val model: AppModel = viewModel()
     val nav = rememberNavController()
     val start = if (model.prefs.server == null) "setup" else "home"
+    val activity = LocalContext.current as? MainActivity
+    val context = LocalContext.current
+
+    // a room opened from a site, on this server or another one
+    val pending = activity?.link?.value
+    LaunchedEffect(pending) {
+        val uri = pending ?: return@LaunchedEffect
+        activity?.link?.value = null
+        val target = roomLink(uri) ?: return@LaunchedEffect
+        if (model.prefs.server != target.server && model.useServer(target.server).isFailure) {
+            Toast.makeText(context, "Could not reach ${target.server.host}", Toast.LENGTH_LONG).show()
+            return@LaunchedEffect
+        }
+        nav.navigate("home") { popUpTo(0) }
+        nav.room(target.name, target.invite)
+    }
 
     NavHost(navController = nav, startDestination = start) {
         composable("setup") {

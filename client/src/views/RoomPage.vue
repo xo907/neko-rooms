@@ -35,6 +35,9 @@
             </div>
             <div v-else-if="room.sleeping" class="nr-preview-note">Asleep while empty, joining wakes it up</div>
             <div v-else-if="partyAt" class="nr-preview-note">{{ partyDate }}</div>
+            <v-btn v-if="isAndroid" small text dark :href="appHref" class="nr-app-link">
+              <v-icon small left>mdi-cellphone</v-icon>Open in the WatchParty app
+            </v-btn>
           </div>
         </div>
 
@@ -205,6 +208,10 @@
   background: radial-gradient(60% 60% at 50% 50%, rgba(0, 0, 0, .65), rgba(0, 0, 0, .3));
   backdrop-filter: blur(3px);
 }
+.nr-app-link {
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .6);
+}
+
 .nr-preview-note {
   display: inline-flex;
   align-items: center;
@@ -381,7 +388,7 @@
 <script lang="ts">
 import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
 import { api, errorMessage, Room, RoomMeta, User } from '@/api-ext'
-import { copyText, inviteLink, joinRoom, relativeTime, roomLink } from '@/utils/join'
+import { appLink, copyText, inviteLink, isAndroid, joinRoom, relativeTime, roomLink } from '@/utils/join'
 import UserAvatar from '@/components/community/UserAvatar.vue'
 import RoomMetaEditor from '@/components/community/RoomMetaEditor.vue'
 import RoomActionBtn from '@/components/RoomActionBtn.vue'
@@ -419,6 +426,12 @@ export default class RoomPage extends Vue {
 
   get inviteCode(): string {
     return String(this.$route.query.invite || '')
+  }
+
+  isAndroid = isAndroid
+
+  get appHref(): string {
+    return this.room ? appLink(this.room.name, this.inviteCode || this.room.invite_code || undefined) : ''
   }
 
   get invite(): string {
