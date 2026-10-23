@@ -133,6 +133,16 @@ var migrations = []string{
 	);
 	CREATE INDEX api_tokens_user ON api_tokens(user_id);
 	`,
+	// 6: when rooms are used, to wake them before people usually come
+	`
+	CREATE TABLE room_activity (
+		room TEXT NOT NULL,
+		at   DATETIME NOT NULL
+	);
+	CREATE INDEX room_activity_room_at ON room_activity(room, at);
+
+	ALTER TABLE room_meta ADD COLUMN owner_control INTEGER NOT NULL DEFAULT 0;
+	`,
 }
 
 type Store struct {

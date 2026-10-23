@@ -61,6 +61,7 @@ type Service struct {
 	brand        func() (name, accent string)
 
 	activity activity
+	warm     warmup
 	live     *liveHub
 
 	ctx    context.Context
@@ -223,6 +224,8 @@ type Room struct {
 	RSVPs       int        `json:"rsvps"`
 	Going       bool       `json:"going"` // the viewer is going to the watch party
 	Guests      []string   `json:"guests"`
+	// only the owner and admins control the browser
+	OwnerControl bool `json:"owner_control"`
 
 	InviteCode string `json:"invite_code,omitempty"` // only for managers
 	KeepAwake  bool   `json:"keep_awake,omitempty"`  // only for managers
@@ -384,6 +387,7 @@ func (s *Service) toRoom(v *viewer, e types.RoomEntry, meta *store.RoomMeta) Roo
 
 	r.Guests = []string{}
 	if meta != nil {
+		r.OwnerControl = meta.OwnerControl
 		r.Sleeping = meta.Sleeping && !e.Running
 		// a party shows until a while after its start
 		if meta.ScheduledAt != nil && time.Now().Before(meta.ScheduledAt.Add(partyWindow)) {
@@ -588,6 +592,8 @@ func (s *Service) JoinURL(ctx context.Context, u *store.User, name, invite, disp
 
 	// the key to the room's live channel: reactions, hands and the queue
 	q.Set("nrt", s.issueTicket(name, q.Get("usr"), r.CanManage))
+
+	s.recordActivity(name)
 
 	return entry.URL + "?" + q.Encode(), nil
 }

@@ -100,6 +100,7 @@ export interface Room {
   rsvps: number
   going: boolean
   guests: string[]
+  owner_control: boolean
 }
 
 export interface RoomMeta {
@@ -116,6 +117,7 @@ export interface RoomMeta {
   sleeping: boolean
   scheduled_at: string | null
   start_url: string
+  owner_control: boolean
 }
 
 export interface RoomMetaUpdate {
@@ -129,6 +131,7 @@ export interface RoomMetaUpdate {
   keep_awake?: boolean
   scheduled_at?: string // RFC 3339, empty to cancel
   start_url?: string // page opened when the room starts
+  owner_control?: boolean // only the owner and admins control the browser
 }
 
 export interface Integrations {
@@ -138,6 +141,7 @@ export interface Integrations {
   notify_watching: boolean
   notify_schedule: boolean
   auto_sleep_minutes: number
+  predictive_wake: boolean
   now_playing: boolean
 }
 

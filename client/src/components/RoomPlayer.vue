@@ -44,6 +44,9 @@
       <div v-if="members.length" class="nr-bar-members d-none d-md-flex">
         <UserAvatar v-for="m in members" :key="m" :name="m" :src="room && room.avatars ? room.avatars[m] : undefined" :size="24" ring tooltip />
       </div>
+      <button type="button" class="nr-bar-btn" title="Continue on another device" @click="handoff">
+        <v-icon small>mdi-cellphone-arrow-down</v-icon>
+      </button>
       <button type="button" class="nr-bar-btn" :title="copied ? 'Link copied' : 'Copy link'" @click="share">
         <v-icon small>{{ copied ? 'mdi-check' : 'mdi-link-variant' }}</v-icon>
       </button>
@@ -291,6 +294,7 @@ import { api, Room } from '@/api-ext'
 import { closePlayer, player, PlayerState } from '@/player/state'
 import { copyText, inviteLink, roomLink, watchRoute } from '@/utils/join'
 import UserAvatar from '@/components/community/UserAvatar.vue'
+import QRCode from 'qrcode'
 
 type Mode = 'full' | 'mini' | null
 
@@ -547,6 +551,21 @@ export default class RoomPlayer extends Vue {
     if (wasFull) {
       this.$router.push(returnTo || { name: 'room', params: { name } }).catch(() => { /* ignore */ })
     }
+  }
+
+  // handoff shows the room as a QR code, a phone camera opens it there
+  async handoff() {
+    const link = this.state.invite ? inviteLink(this.state.name, this.state.invite) : roomLink(this.state.name)
+    const image = await QRCode.toDataURL(link, { margin: 1, width: 240, errorCorrectionLevel: 'M' })
+    this.$swal({
+      title: 'Continue on another device',
+      text: 'Scan it with your phone camera to open this room there.',
+      imageUrl: image,
+      imageWidth: 240,
+      imageHeight: 240,
+      imageAlt: link,
+      confirmButtonText: 'Done',
+    })
   }
 
   async share() {

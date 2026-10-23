@@ -842,3 +842,13 @@ func (manager *RoomManagerCtx) OpenURL(ctx context.Context, id string, url strin
 	_, err := manager.x11(ctx, id, `xdotool key --clearmodifiers ctrl+l && sleep 0.2 && xdotool type --delay 4 -- "$1" && sleep 0.1 && xdotool key Return`, url)
 	return err
 }
+
+// NekoPost sends a JSON request to neko inside the room's container.
+func (manager *RoomManagerCtx) NekoPost(ctx context.Context, id string, path string, body []byte) ([]byte, error) {
+	return manager.containerExecRaw(ctx, id, []string{
+		"wget", "-q", "-O-",
+		"--header=Content-Type: application/json",
+		"--post-data=" + string(body),
+		fmt.Sprintf("http://127.0.0.1:%d%s", frontendPort, path),
+	})
+}

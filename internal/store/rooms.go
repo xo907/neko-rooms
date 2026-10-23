@@ -33,17 +33,20 @@ type RoomMeta struct {
 	Sleeping    bool       `json:"sleeping"`     // stopped because it was empty, wakes when someone joins
 	ScheduledAt *time.Time `json:"scheduled_at"` // start of a watch party
 	StartURL    string     `json:"start_url"`    // page opened when the room starts
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	// only the owner and admins control the browser, for rooms signed in to
+	// someone's accounts
+	OwnerControl bool      `json:"owner_control"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-const roomMetaColumns = `name, owner_id, visibility, title, description, category, featured, hidden, invite_code, keep_awake, sleeping, scheduled_at, start_url, created_at, updated_at`
+const roomMetaColumns = `name, owner_id, visibility, title, description, category, featured, hidden, invite_code, keep_awake, sleeping, scheduled_at, start_url, owner_control, created_at, updated_at`
 
 func scanRoomMeta(row scanner) (*RoomMeta, error) {
 	m := &RoomMeta{}
 	var owner sql.NullInt64
 	var scheduled sql.NullTime
-	err := row.Scan(&m.Name, &owner, &m.Visibility, &m.Title, &m.Description, &m.Category, &m.Featured, &m.Hidden, &m.InviteCode, &m.KeepAwake, &m.Sleeping, &scheduled, &m.StartURL, &m.CreatedAt, &m.UpdatedAt)
+	err := row.Scan(&m.Name, &owner, &m.Visibility, &m.Title, &m.Description, &m.Category, &m.Featured, &m.Hidden, &m.InviteCode, &m.KeepAwake, &m.Sleeping, &scheduled, &m.StartURL, &m.OwnerControl, &m.CreatedAt, &m.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -93,14 +96,14 @@ func (s *Store) PutRoomMeta(m *RoomMeta) error {
 		scheduled = m.ScheduledAt.UTC()
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO room_meta (`+roomMetaColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO room_meta (`+roomMetaColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET owner_id = excluded.owner_id, visibility = excluded.visibility,
 		   title = excluded.title, description = excluded.description, category = excluded.category,
 		   featured = excluded.featured, hidden = excluded.hidden, invite_code = excluded.invite_code,
 		   keep_awake = excluded.keep_awake, sleeping = excluded.sleeping, scheduled_at = excluded.scheduled_at,
-		   start_url = excluded.start_url, updated_at = excluded.updated_at`,
+		   start_url = excluded.start_url, owner_control = excluded.owner_control, updated_at = excluded.updated_at`,
 		m.Name, m.OwnerID, m.Visibility, m.Title, m.Description, m.Category, m.Featured, m.Hidden, m.InviteCode,
-		m.KeepAwake, m.Sleeping, scheduled, m.StartURL, m.CreatedAt, m.UpdatedAt,
+		m.KeepAwake, m.Sleeping, scheduled, m.StartURL, m.OwnerControl, m.CreatedAt, m.UpdatedAt,
 	)
 	return err
 }
