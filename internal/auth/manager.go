@@ -364,9 +364,18 @@ func (m *Manager) EndSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UserFromRequest resolves the user from the session cookie, or from HTTP
-// basic auth (for scripts using the API). Returns nil when not signed in.
+// UserFromRequest resolves the user from the session cookie, or from an API
+// token or HTTP basic auth (for scripts using the API). Returns nil when not
+// signed in.
 func (m *Manager) UserFromRequest(r *http.Request) (*store.User, *store.Session) {
+	if secret, ok := bearerToken(r); ok {
+		u, err := m.userFromToken(secret)
+		if err != nil {
+			return nil, nil
+		}
+		return u, nil
+	}
+
 	if c, err := r.Cookie(CookieName); err == nil && c.Value != "" {
 		sess, err := m.store.GetSession(hashToken(c.Value))
 		if err == nil && time.Now().Before(sess.ExpiresAt) {

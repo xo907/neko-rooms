@@ -1,0 +1,172 @@
+# neko-rooms on kubernetes: rooms run as deployments next to it.
+#
+#   kubectl apply -f deploy/k8s/neko-rooms.yaml
+#
+# Before applying, set NEKO_ROOMS_NAT1TO1 below to the public address of the
+# node(s) rooms run on: video (WebRTC) goes straight to that node, on the
+# ports in NEKO_ROOMS_EPR, open them in its firewall. With several nodes, pin
+# rooms to one with NEKO_ROOMS_K8S_NODE_SELECTOR (e.g. neko=true) and label it.
+#
+# The site is the neko-rooms service, expose it with an ingress (example at
+# the end) or `kubectl -n neko-rooms port-forward svc/neko-rooms 8080:8080`.
+# Without an admin password the first start prints a setup token:
+# `kubectl -n neko-rooms logs deploy/neko-rooms | grep -i token`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neko-rooms
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: neko-rooms
+  namespace: neko-rooms
+---
+# what neko-rooms does with rooms: deployments and services of its own, and
+# commands in room pods (what is playing, opening links)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: neko-rooms
+  namespace: neko-rooms
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: neko-rooms
+  namespace: neko-rooms
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: neko-rooms
+subjects:
+  - kind: ServiceAccount
+    name: neko-rooms
+    namespace: neko-rooms
+---
+# users, branding and settings
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neko-rooms-data
+  namespace: neko-rooms
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neko-rooms
+  namespace: neko-rooms
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: neko-rooms
+  template:
+    metadata:
+      labels:
+        app: neko-rooms
+    spec:
+      serviceAccountName: neko-rooms
+      containers:
+        - name: neko-rooms
+          image: ghcr.io/xo907/neko-rooms:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: NEKO_ROOMS_RUNTIME
+              value: k8s
+            - name: NEKO_ROOMS_K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # room names become kubernetes names: lowercase, digits, dashes
+            - name: NEKO_ROOMS_INSTANCE_NAME
+              value: neko-rooms
+            - name: NEKO_ROOMS_PATH_PREFIX
+              value: /room/
+            - name: NEKO_ROOMS_TRAEFIK_ENABLED
+              value: "false"
+            # one UDP + TCP port per room, on the node
+            - name: NEKO_ROOMS_MUX
+              value: "true"
+            - name: NEKO_ROOMS_EPR
+              value: 59000-59049
+            # public address of the node rooms run on
+            - name: NEKO_ROOMS_NAT1TO1
+              value: "203.0.113.10"
+            # - name: NEKO_ROOMS_K8S_NODE_SELECTOR
+            #   value: neko=true
+            - name: NEKO_ROOMS_ADMIN_USERNAME
+              value: admin
+            # - name: NEKO_ROOMS_ADMIN_PASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: neko-rooms
+            #       key: admin-password
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: neko-rooms-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neko-rooms
+  namespace: neko-rooms
+spec:
+  selector:
+    app: neko-rooms
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+# ---
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: neko-rooms
+#   namespace: neko-rooms
+#   annotations:
+#     # rooms keep websockets open for hours
+#     nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+#     nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+# spec:
+#   rules:
+#     - host: rooms.example.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: neko-rooms
+#                 port:
+#                   name: http

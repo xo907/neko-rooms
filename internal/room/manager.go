@@ -1,27 +1,22 @@
 package room
 
 import (
-	"bytes"
 	"context"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/docker/cli/opts"
 	dockerContainer "github.com/docker/docker/api/types/container"
-	dockerMount "github.com/docker/docker/api/types/mount"
 	dockerNetwork "github.com/docker/docker/api/types/network"
 	dockerStrslice "github.com/docker/docker/api/types/strslice"
 	dockerClient "github.com/docker/docker/client"
-	dockerNames "github.com/docker/docker/daemon/names"
 	"github.com/docker/go-connections/nat"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -30,7 +25,6 @@ import (
 	"github.com/m1k1o/neko-rooms/internal/config"
 	"github.com/m1k1o/neko-rooms/internal/policies"
 	"github.com/m1k1o/neko-rooms/internal/types"
-	"github.com/m1k1o/neko-rooms/internal/utils"
 )
 
 const (
@@ -57,6 +51,7 @@ type RoomManagerCtx struct {
 	config *config.Room
 	client *dockerClient.Client
 	events *events
+	pulls  imagePulls
 }
 
 func (manager *RoomManagerCtx) Config() types.RoomsConfig {
@@ -247,78 +242,43 @@ func (manager *RoomManagerCtx) ExportAsDockerCompose(ctx context.Context) ([]byt
 }
 
 func (manager *RoomManagerCtx) Create(ctx context.Context, settings types.RoomSettings) (string, error) {
-	if settings.Name != "" && !dockerNames.RestrictedNamePattern.MatchString(settings.Name) {
-		return "", fmt.Errorf("invalid container name, must match %s", dockerNames.RestrictedNameChars)
-	}
-
-	if !slices.Contains(manager.config.NekoImages, settings.NekoImage) {
-		return "", fmt.Errorf("invalid neko image")
-	}
-
-	// if api version is not set, try to detect it
-	if settings.ApiVersion == 0 {
-		inspect, err := manager.client.ImageInspect(ctx, settings.NekoImage)
-		if err != nil {
-			return "", err
-		}
-
-		// based on image label (preferred)
-		if val, ok := inspect.Config.Labels["net.m1k1o.neko.api-version"]; ok {
-			var err error
-			settings.ApiVersion, err = strconv.Atoi(val)
-			if err != nil {
-				return "", err
-			}
-		} else
-
-		// based on opencontainers image url label
-		if val, ok := inspect.Config.Labels["org.opencontainers.image.url"]; ok {
-			// TODO: this should be removed in future, but since we have a lot of legacy images, we need to support it
-			switch val {
-			case "https://github.com/m1k1o/neko",
-				"https://github.com/m1k1o/neko-apps":
-				settings.ApiVersion = 2
-			case "https://github.com/demodesk/neko":
-				settings.ApiVersion = 3
-			}
-		}
-
-		// still unable to detect api version
-		if settings.ApiVersion == 0 {
-			// TODO: this should be removed in future, but since we have a lot of v2 images, we need to support it
-			log.Warn().Str("image", settings.NekoImage).Msg("unable to detect api version, fallback to v2")
-			settings.ApiVersion = 2
-		}
-	}
-
-	// TODO: Check if path name exists.
-	roomName := settings.Name
-	if roomName == "" {
-		var err error
-		roomName, err = utils.NewUID(8)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	containerName := manager.config.InstanceName + "-" + roomName
-
-	//
-	// Allocate ports
-	//
-
-	portsNeeded := settings.MaxConnections
-	if manager.config.Mux {
-		portsNeeded = 1
-	}
-
-	epr, err := manager.allocatePorts(ctx, portsNeeded)
+	used, err := manager.getUsedPorts(ctx)
 	if err != nil {
 		return "", err
 	}
 
+	// images that are not there yet are pulled first
+	if slices.Contains(manager.config.NekoImages, settings.NekoImage) {
+		if err := manager.ensureImage(ctx, settings.NekoImage); err != nil {
+			return "", err
+		}
+	}
+
+	// a remote engine: the web port is published for neko-rooms to reach
+	var httpPort uint16
+	spec, err := manager.buildSpec(ctx, settings, specOptions{
+		usedPorts:   used,
+		imageLabels: manager.imageLabels,
+		proxyHost: func(roomName string) (string, error) {
+			rh := manager.config.Docker.RoomsHost
+			if rh == "" {
+				return "", nil
+			}
+			port, err := manager.allocateHTTPPort(ctx)
+			if err != nil {
+				return "", err
+			}
+			httpPort = port
+			return net.JoinHostPort(rh, strconv.Itoa(int(port))), nil
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	settings = spec.Settings
+
 	portBindings := nat.PortMap{}
-	for port := epr.Min; port <= epr.Max; port++ {
+	for port := spec.Epr.Min; port <= spec.Epr.Max; port++ {
 		portBindings[nat.Port(fmt.Sprintf("%d/udp", port))] = []nat.PortBinding{
 			{
 				HostIP:   "0.0.0.0",
@@ -337,6 +297,15 @@ func (manager *RoomManagerCtx) Create(ctx context.Context, settings types.RoomSe
 		}
 	}
 
+	if httpPort != 0 {
+		portBindings[nat.Port(fmt.Sprintf("%d/tcp", frontendPort))] = []nat.PortBinding{
+			{
+				HostIP:   "0.0.0.0",
+				HostPort: fmt.Sprintf("%d", httpPort),
+			},
+		}
+	}
+
 	exposedPorts := nat.PortSet{
 		nat.Port(fmt.Sprintf("%d/tcp", frontendPort)): struct{}{},
 	}
@@ -346,299 +315,23 @@ func (manager *RoomManagerCtx) Create(ctx context.Context, settings types.RoomSe
 	}
 
 	//
-	// Set internal labels
-	//
-
-	var browserPolicyLabels *BrowserPolicyLabels
-	if settings.BrowserPolicy != nil {
-		browserPolicyLabels = &BrowserPolicyLabels{
-			Type: settings.BrowserPolicy.Type,
-			Path: settings.BrowserPolicy.Path,
-		}
-	}
-
-	labels := manager.serializeLabels(RoomLabels{
-		Name: roomName,
-		Mux:  manager.config.Mux,
-		Epr:  epr,
-
-		NekoImage:  settings.NekoImage,
-		ApiVersion: settings.ApiVersion,
-
-		BrowserPolicy: browserPolicyLabels,
-		UserDefined:   settings.Labels,
-	})
-
-	//
-	// Set traefik labels
-	//
-
-	pathPrefix := path.Join("/", manager.config.PathPrefix, roomName)
-
-	if t := manager.config.Traefik; t.Enabled {
-		// create traefik rule
-		traefikRule := "PathPrefix(`" + pathPrefix + "`)"
-		if t.Domain != "" && t.Domain != "*" {
-			// match *.domain.tld as subdomain
-			if after, ok := strings.CutPrefix(t.Domain, "*."); ok {
-				traefikRule = fmt.Sprintf(
-					"Host(`%s.%s`)",
-					roomName,
-					after,
-				)
-			} else {
-				traefikRule += " && Host(`" + t.Domain + "`)"
-			}
-		} else {
-			traefikRule += " && HostRegexp(`{host:.+}`)"
-		}
-
-		labels["traefik.enable"] = "true"
-		labels["traefik.http.services."+containerName+"-frontend.loadbalancer.server.port"] = fmt.Sprintf("%d", frontendPort)
-		labels["traefik.http.routers."+containerName+".entrypoints"] = t.Entrypoint
-		labels["traefik.http.routers."+containerName+".rule"] = traefikRule
-		labels["traefik.http.middlewares."+containerName+"-rdr.redirectregex.regex"] = pathPrefix + "$$"
-		labels["traefik.http.middlewares."+containerName+"-rdr.redirectregex.replacement"] = pathPrefix + "/"
-		labels["traefik.http.middlewares."+containerName+"-prf.stripprefix.prefixes"] = pathPrefix + "/"
-		labels["traefik.http.routers."+containerName+".middlewares"] = containerName + "-rdr," + containerName + "-prf"
-		labels["traefik.http.routers."+containerName+".service"] = containerName + "-frontend"
-
-		// optional HTTPS
-		if t.Certresolver != "" {
-			labels["traefik.http.routers."+containerName+".tls"] = "true"
-			labels["traefik.http.routers."+containerName+".tls.certresolver"] = t.Certresolver
-		}
-	} else {
-		labels["m1k1o.neko_rooms.proxy.enabled"] = "true"
-		labels["m1k1o.neko_rooms.proxy.path"] = pathPrefix
-		labels["m1k1o.neko_rooms.proxy.port"] = fmt.Sprintf("%d", frontendPort)
-	}
-
-	// add custom labels
-	for _, label := range manager.config.Labels {
-		// replace dynamic values in labels
-		label = strings.ReplaceAll(label, "{containerName}", containerName)
-		label = strings.ReplaceAll(label, "{roomName}", roomName)
-
-		if t := manager.config.Traefik; t.Enabled {
-			label = strings.ReplaceAll(label, "{traefikEntrypoint}", t.Entrypoint)
-			label = strings.ReplaceAll(label, "{traefikCertresolver}", t.Certresolver)
-		}
-
-		v := strings.SplitN(label, "=", 2)
-		if len(v) != 2 {
-			manager.logger.Warn().Str("label", label).Msg("invalid custom label")
-			continue
-		}
-
-		key, val := v[0], v[1]
-		labels[key] = val
-	}
-
-	//
-	// Set environment variables
-	//
-
-	env, err := settings.ToEnv(
-		manager.config,
-		types.PortSettings{
-			FrontendPort: frontendPort,
-			EprMin:       epr.Min,
-			EprMax:       epr.Max,
-		})
-	if err != nil {
-		return "", err
-	}
-
-	//
-	// Set browser policies
-	//
-
-	if settings.BrowserPolicy != nil {
-		if !manager.config.StorageEnabled {
-			return "", fmt.Errorf("policies cannot be specified, because storage is disabled or unavailable")
-		}
-
-		policyJson, err := policies.Generate(settings.BrowserPolicy.Content, settings.BrowserPolicy.Type)
-		if err != nil {
-			return "", err
-		}
-
-		// create policy path (+ also get host path)
-		policyPath := fmt.Sprintf("/%s-%s-policy.json", roomName, settings.BrowserPolicy.Type)
-		templateInternalPath := path.Join(manager.config.StorageInternal, templateStoragePath)
-		policyInternalPath := path.Join(templateInternalPath, policyPath)
-
-		// create dir if does not exist
-		if _, err := os.Stat(templateInternalPath); os.IsNotExist(err) {
-			if err := os.MkdirAll(templateInternalPath, os.ModePerm); err != nil {
-				return "", err
-			}
-		}
-
-		// write policy to file
-		if err := os.WriteFile(policyInternalPath, []byte(policyJson), 0644); err != nil {
-			return "", err
-		}
-
-		// mount policy file
-		settings.Mounts = append(settings.Mounts, types.RoomMount{
-			Type:          types.MountTemplate,
-			HostPath:      policyPath,
-			ContainerPath: settings.BrowserPolicy.Path,
-		})
-	}
-
-	//
-	// Set container mounts
-	//
-
-	paths := map[string]bool{}
-	mounts := []dockerMount.Mount{}
-	for _, mount := range settings.Mounts {
-		// ignore duplicates
-		if _, ok := paths[mount.ContainerPath]; ok {
-			continue
-		}
-
-		readOnly := false
-
-		hostPath := filepath.Clean(mount.HostPath)
-		containerPath := filepath.Clean(mount.ContainerPath)
-
-		if !filepath.IsAbs(hostPath) || !filepath.IsAbs(containerPath) {
-			return "", fmt.Errorf("mount paths must be absolute")
-		}
-
-		switch mount.Type {
-		case types.MountPrivate:
-			if !manager.config.StorageEnabled {
-				return "", fmt.Errorf("private mounts cannot be specified, because storage is disabled or unavailable")
-			}
-
-			// ensure that target exists with correct permissions
-			internalPath := path.Join(manager.config.StorageInternal, privateStoragePath, roomName, hostPath)
-			if _, err := os.Stat(internalPath); os.IsNotExist(err) {
-				if err := os.MkdirAll(internalPath, os.ModePerm); err != nil {
-					return "", err
-				}
-
-				if err := utils.ChownR(internalPath, privateStorageUid, privateStorageGid); err != nil {
-					return "", err
-				}
-			}
-
-			// prefix host path
-			hostPath = path.Join(manager.config.StorageExternal, privateStoragePath, roomName, hostPath)
-		case types.MountTemplate:
-			if !manager.config.StorageEnabled {
-				return "", fmt.Errorf("template mounts cannot be specified, because storage is disabled or unavailable")
-			}
-
-			// readonly template data
-			readOnly = true
-
-			// prefix host path
-			hostPath = path.Join(manager.config.StorageExternal, templateStoragePath, hostPath)
-		case types.MountProtected, types.MountPublic:
-			// readonly if mount type is protected
-			readOnly = mount.Type == types.MountProtected
-
-			// public whitelisted mounts
-			var isAllowed = false
-			for _, path := range manager.config.MountsWhitelist {
-				if strings.HasPrefix(hostPath, path) {
-					isAllowed = true
-					break
-				}
-			}
-
-			if !isAllowed {
-				return "", fmt.Errorf("mount path is not whitelisted in config")
-			}
-		default:
-			return "", fmt.Errorf("unknown mount type %q", mount.Type)
-		}
-
-		mounts = append(mounts,
-			dockerMount.Mount{
-				Type:        dockerMount.TypeBind,
-				Source:      hostPath,
-				Target:      containerPath,
-				ReadOnly:    readOnly,
-				Consistency: dockerMount.ConsistencyDefault,
-
-				BindOptions: &dockerMount.BindOptions{
-					Propagation:  dockerMount.PropagationRPrivate,
-					NonRecursive: false,
-				},
-			},
-		)
-
-		paths[mount.ContainerPath] = true
-	}
-
-	//
-	// Set container device requests
-	//
-
-	var deviceRequests []dockerContainer.DeviceRequest
-
-	if len(settings.Resources.Gpus) > 0 {
-		gpuOpts := opts.GpuOpts{}
-
-		// convert to csv
-		var buf bytes.Buffer
-		w := csv.NewWriter(&buf)
-		if err := w.Write(settings.Resources.Gpus); err != nil {
-			return "", err
-		}
-		w.Flush()
-
-		// set GPU opts
-		if err := gpuOpts.Set(buf.String()); err != nil {
-			return "", err
-		}
-
-		deviceRequests = append(deviceRequests, gpuOpts.Value()...)
-	}
-
-	//
-	// Set container devices
-	//
-
-	var devices []dockerContainer.DeviceMapping
-	for _, device := range settings.Resources.Devices {
-		devices = append(devices, dockerContainer.DeviceMapping{
-			PathOnHost:        device,
-			PathInContainer:   device,
-			CgroupPermissions: "rwm",
-		})
-	}
-
-	//
 	// Set container configs
 	//
 
-	hostname := containerName
-	if settings.Hostname != "" {
-		hostname = settings.Hostname
-	}
-
 	config := &dockerContainer.Config{
 		// Hostname
-		Hostname: hostname,
+		Hostname: spec.Hostname,
 		// Domainname is preventing from running container on LXC (Proxmox)
 		// https://www.gitmemory.com/issue/docker/for-linux/743/524569376
 		// Domainname: containerName,
 		// List of exposed ports
 		ExposedPorts: exposedPorts,
 		// List of environment variable to set in the container
-		Env: env,
+		Env: spec.Env,
 		// Name of the image as it was passed by the operator (e.g. could be symbolic)
 		Image: settings.NekoImage,
 		// List of labels set to this container
-		Labels: labels,
+		Labels: spec.Labels,
 	}
 
 	hostConfig := &dockerContainer.HostConfig{
@@ -660,19 +353,19 @@ func (manager *RoomManagerCtx) Create(ctx context.Context, settings types.RoomSe
 		// Total shm memory usage
 		ShmSize: settings.Resources.ShmSize,
 		// Mounts specs used by the container
-		Mounts: mounts,
+		Mounts: spec.Mounts,
 		// Resources contains container's resources (cgroups config, ulimits...)
 		Resources: dockerContainer.Resources{
 			CPUShares:      settings.Resources.CPUShares,
 			NanoCPUs:       settings.Resources.NanoCPUs,
 			Memory:         settings.Resources.Memory,
-			DeviceRequests: deviceRequests,
-			Devices:        devices,
+			DeviceRequests: spec.DeviceRequests,
+			Devices:        spec.Devices,
 		},
 		// DNS
 		DNS: settings.DNS,
 		// Privileged
-		Privileged: slices.Contains(manager.config.NekoPrivilegedImages, settings.NekoImage),
+		Privileged: spec.Privileged,
 	}
 
 	networkingConfig := &dockerNetwork.NetworkingConfig{
@@ -688,7 +381,7 @@ func (manager *RoomManagerCtx) Create(ctx context.Context, settings types.RoomSe
 		hostConfig,
 		networkingConfig,
 		nil,
-		containerName,
+		spec.ContainerName,
 	)
 
 	if err != nil {
@@ -696,6 +389,18 @@ func (manager *RoomManagerCtx) Create(ctx context.Context, settings types.RoomSe
 	}
 
 	return container.ID[:12], nil
+}
+
+// imageLabels are the labels of an image on the docker host
+func (manager *RoomManagerCtx) imageLabels(ctx context.Context, image string) (map[string]string, error) {
+	inspect, err := manager.client.ImageInspect(ctx, image)
+	if err != nil {
+		return nil, err
+	}
+	if inspect.Config == nil {
+		return map[string]string{}, nil
+	}
+	return inspect.Config.Labels, nil
 }
 
 func (manager *RoomManagerCtx) GetEntry(ctx context.Context, id string) (*types.RoomEntry, error) {
@@ -911,23 +616,42 @@ func (manager *RoomManagerCtx) GetStats(ctx context.Context, id string) (*types.
 		return nil, err
 	}
 
+	var startedAt time.Time
+	if container.State.StartedAt != "" {
+		startedAt, err = time.Parse(time.RFC3339, container.State.StartedAt)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return nekoStats(ctx, labels.ApiVersion, settings.AdminPass, manager.execFetch(id), startedAt)
+}
+
+// nekoFetch gets a path of a room's neko http api
+type nekoFetch func(ctx context.Context, path string) ([]byte, error)
+
+// execFetch asks neko from inside its container
+func (manager *RoomManagerCtx) execFetch(id string) nekoFetch {
+	return func(ctx context.Context, path string) ([]byte, error) {
+		return manager.containerExecRaw(ctx, id, []string{"wget", "-q", "-O-", fmt.Sprintf("http://127.0.0.1:%d%s", frontendPort, path)})
+	}
+}
+
+// nekoStats asks neko who is in the room
+func nekoStats(ctx context.Context, apiVersion int, adminPass string, fetch nekoFetch, startedAt time.Time) (*types.RoomStats, error) {
 	var stats types.RoomStats
-	switch labels.ApiVersion {
+	switch apiVersion {
 	case 2:
-		output, err := manager.containerExec(ctx, id, []string{
-			"wget", "-q", "-O-", "http://127.0.0.1:8080/stats?pwd=" + url.QueryEscape(settings.AdminPass),
-		})
+		output, err := fetch(ctx, "/stats?pwd="+url.QueryEscape(adminPass))
 		if err != nil {
 			return nil, err
 		}
 
-		if err := json.Unmarshal([]byte(output), &stats); err != nil {
+		if err := json.Unmarshal(output, &stats); err != nil {
 			return nil, err
 		}
 	case 3:
-		output, err := manager.containerExec(ctx, id, []string{
-			"wget", "-q", "-O-", "http://127.0.0.1:8080/api/sessions?token=" + url.QueryEscape(settings.AdminPass),
-		})
+		output, err := fetch(ctx, "/api/sessions?token="+url.QueryEscape(adminPass))
 		if err != nil {
 			return nil, err
 		}
@@ -944,7 +668,7 @@ func (manager *RoomManagerCtx) GetStats(ctx context.Context, id string) (*types.
 			} `json:"state"`
 		}
 
-		if err := json.Unmarshal([]byte(output), &sessions); err != nil {
+		if err := json.Unmarshal(output, &sessions); err != nil {
 			return nil, err
 		}
 
@@ -973,17 +697,11 @@ func (manager *RoomManagerCtx) GetStats(ctx context.Context, id string) (*types.
 			}
 		}
 
-		// parse started time
-		if container.State.StartedAt != "" {
-			stats.ServerStartedAt, err = time.Parse(time.RFC3339, container.State.StartedAt)
-			if err != nil {
-				return nil, err
-			}
-		}
+		stats.ServerStartedAt = startedAt
 
 		// TODO: settings & host
 	default:
-		return nil, fmt.Errorf("unsupported API version: %d", labels.ApiVersion)
+		return nil, fmt.Errorf("unsupported API version: %d", apiVersion)
 	}
 
 	return &stats, nil
@@ -1075,17 +793,22 @@ func (manager *RoomManagerCtx) GetScreenshot(ctx context.Context, id string) ([]
 		return nil, err
 	}
 
-	var target string
-	switch labels.ApiVersion {
+	return nekoScreenshot(ctx, labels.ApiVersion, settings.AdminPass, manager.execFetch(id))
+}
+
+// nekoScreenshot asks neko for a JPEG of the screen
+func nekoScreenshot(ctx context.Context, apiVersion int, adminPass string, fetch nekoFetch) ([]byte, error) {
+	var path string
+	switch apiVersion {
 	case 2:
-		target = "http://127.0.0.1:8080/screenshot.jpg?pwd=" + url.QueryEscape(settings.AdminPass)
+		path = "/screenshot.jpg?pwd=" + url.QueryEscape(adminPass)
 	case 3:
-		target = "http://127.0.0.1:8080/api/room/screen/shot.jpg?quality=60&token=" + url.QueryEscape(settings.AdminPass)
+		path = "/api/room/screen/shot.jpg?quality=60&token=" + url.QueryEscape(adminPass)
 	default:
-		return nil, fmt.Errorf("unsupported API version: %d", labels.ApiVersion)
+		return nil, fmt.Errorf("unsupported API version: %d", apiVersion)
 	}
 
-	data, err := manager.containerExecRaw(ctx, id, []string{"wget", "-q", "-O-", target})
+	data, err := fetch(ctx, path)
 	if err != nil {
 		return nil, err
 	}

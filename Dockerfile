@@ -22,12 +22,15 @@ WORKDIR /app
 
 COPY . .
 RUN go get -v -t -d .; \
-    CGO_ENABLED=0 go build -o bin/neko_rooms cmd/neko_rooms/main.go
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/neko_rooms cmd/neko_rooms/main.go
 
 #
 # STAGE 3: build a small image
 #
-FROM scratch
+# alpine rather than scratch: CA certificates for HTTPS (Discord), and the
+# ssh client for docker engines reached over ssh://
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates openssh-client tzdata
 COPY --from=builder /app/bin/neko_rooms /app/bin/neko_rooms
 COPY --from=frontend /src/dist/ /var/www
 

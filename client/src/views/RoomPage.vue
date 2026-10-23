@@ -117,6 +117,7 @@
             <RoomActionBtn action="stop" :roomId="room.id" :disabled="!room.running && !room.paused" @done="load" />
             <RoomActionBtn action="pause" :roomId="room.id" :disabled="!room.running" @done="load" />
             <RoomActionBtn action="restart" :roomId="room.id" :disabled="!room.running" @done="load" />
+            <RoomActionBtn action="upgrade" :roomId="room.id" :roomName="room.name" @done="load" />
             <v-spacer />
             <RoomActionBtn action="remove" :roomId="room.id" @done="$router.push({ name: 'home' })" />
           </div>

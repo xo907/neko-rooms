@@ -15,7 +15,6 @@ import (
 
 	"github.com/m1k1o/neko-rooms/internal/auth"
 	"github.com/m1k1o/neko-rooms/internal/branding"
-	"github.com/m1k1o/neko-rooms/internal/room"
 	"github.com/m1k1o/neko-rooms/internal/types"
 	"github.com/m1k1o/neko-rooms/pkg/prefix"
 )
@@ -43,7 +42,7 @@ type ProxyManagerCtx struct {
 	waitChans   map[string]*wait
 	waitEnabled bool
 
-	rooms    *room.RoomManagerCtx
+	rooms    types.RoomManager
 	handlers prefix.Tree[*entry]
 
 	branding *branding.Manager
@@ -59,7 +58,7 @@ func (p *ProxyManagerCtx) SetWaker(wake func(ctx context.Context, name string) b
 	p.wake = wake
 }
 
-func New(rooms *room.RoomManagerCtx, waitEnabled bool, brandingManager *branding.Manager, authManager *auth.Manager, loginURL string) *ProxyManagerCtx {
+func New(rooms types.RoomManager, waitEnabled bool, brandingManager *branding.Manager, authManager *auth.Manager, loginURL string) *ProxyManagerCtx {
 	return &ProxyManagerCtx{
 		branding: brandingManager,
 		auth:     authManager,
@@ -94,12 +93,22 @@ func (p *ProxyManagerCtx) Start() {
 
 				p.logger.Err(err).Msg("room event error")
 			case msg, ok := <-msgs:
+				if !ok {
+					return
+				}
+				if msg.Action == types.RoomEventResync {
+					if err := p.Refresh(); err != nil {
+						p.logger.Err(err).Msg("unable to refresh containers")
+					}
+					continue
+				}
+
 				enabled, path, port, ok := p.parseLabels(msg.ContainerLabels)
 				if !ok {
 					break
 				}
 
-				host := msg.ID + ":" + port
+				host := roomHost(msg.ID, port, msg.ContainerLabels)
 
 				p.logger.Info().
 					Str("action", string(msg.Action)).
@@ -186,7 +195,7 @@ func (p *ProxyManagerCtx) Refresh() error {
 			continue
 		}
 
-		host := room.ID + ":" + port
+		host := roomHost(room.ID, port, room.ContainerLabels)
 
 		entry := &entry{
 			id:      room.ID,
@@ -204,6 +213,15 @@ func (p *ProxyManagerCtx) Refresh() error {
 	}
 
 	return nil
+}
+
+// roomHost is where a room's web port is reached: the container on the
+// shared network, or an address it was published on
+func roomHost(id, port string, labels map[string]string) string {
+	if h := labels["m1k1o.neko_rooms.proxy.host"]; h != "" {
+		return h
+	}
+	return id + ":" + port
 }
 
 func (p *ProxyManagerCtx) parseLabels(labels map[string]string) (enabled bool, path string, port string, ok bool) {

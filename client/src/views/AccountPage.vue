@@ -70,7 +70,63 @@
           </v-simple-table>
         </v-card>
       </v-col>
+
+      <v-col cols="12">
+        <v-card>
+          <v-card-title class="subtitle-1 font-weight-bold">
+            API tokens
+            <v-spacer />
+            <v-btn small depressed color="primary" @click="tokenDialog = true">
+              <v-icon left small>mdi-key-plus</v-icon>New token
+            </v-btn>
+          </v-card-title>
+          <v-card-text class="pb-0">
+            Scripts can use the API as you, with <code>Authorization: Bearer &lt;token&gt;</code>. A token can do everything your account can.
+          </v-card-text>
+          <v-simple-table v-if="tokens.length">
+            <thead>
+              <tr><th>Name</th><th>Token</th><th>Last used</th><th>Expires</th><th /></tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in tokens" :key="t.id">
+                <td>{{ t.name }}</td>
+                <td><code>nrk_…{{ t.hint }}</code></td>
+                <td><span v-if="t.last_used_at">{{ t.last_used_at | timeago }}</span><span v-else>never</span></td>
+                <td><span v-if="t.expires_at">{{ t.expires_at | datetime }}</span><span v-else>never</span></td>
+                <td class="text-right">
+                  <v-btn icon small title="Revoke" @click="revokeToken(t)"><v-icon small>mdi-trash-can-outline</v-icon></v-btn>
+                </td>
+              </tr>
+            </tbody>
+          </v-simple-table>
+          <v-card-text v-else class="text--secondary">No tokens yet.</v-card-text>
+        </v-card>
+      </v-col>
     </v-row>
+
+    <v-dialog v-model="tokenDialog" max-width="480">
+      <v-card>
+        <v-card-title>{{ newToken ? 'Your new token' : 'New API token' }}</v-card-title>
+        <v-card-text v-if="newToken">
+          <p>Copy it now, it is not shown again.</p>
+          <v-text-field :value="newToken" readonly outlined dense hide-details append-icon="mdi-content-copy" @click:append="copyToken" @focus="$event.target.select()" />
+        </v-card-text>
+        <v-card-text v-else>
+          <v-text-field v-model="tokenName" label="Name" placeholder="Deploy script" outlined dense autofocus maxlength="60" />
+          <v-select v-model="tokenDays" :items="tokenExpiry" label="Expires" outlined dense hide-details />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <template v-if="newToken">
+            <v-btn color="primary" depressed @click="closeToken">Done</v-btn>
+          </template>
+          <template v-else>
+            <v-btn text @click="closeToken">Cancel</v-btn>
+            <v-btn color="primary" depressed :loading="creatingToken" @click="createToken">Create</v-btn>
+          </template>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -101,7 +157,7 @@
 
 <script lang="ts">
 import { Vue, Component } from 'vue-property-decorator'
-import { api, errorMessage, Session, User } from '@/api-ext'
+import { api, ApiToken, errorMessage, Session, User } from '@/api-ext'
 import UserAvatar from '@/components/community/UserAvatar.vue'
 
 const AVATAR_SIZE = 256
@@ -154,6 +210,18 @@ export default class AccountPage extends Vue {
   savingPassword = false
   uploading = false
   sessions: Session[] = []
+  tokens: ApiToken[] = []
+  tokenDialog = false
+  tokenName = ''
+  tokenDays = 90
+  newToken = ''
+  creatingToken = false
+  tokenExpiry = [
+    { text: 'In 30 days', value: 30 },
+    { text: 'In 90 days', value: 90 },
+    { text: 'In a year', value: 365 },
+    { text: 'Never', value: 0 },
+  ]
 
   describeAgent = describeAgent
 
@@ -239,6 +307,50 @@ export default class AccountPage extends Vue {
     }
   }
 
+  async loadTokens() {
+    this.tokens = await api.tokens()
+  }
+
+  async createToken() {
+    this.creatingToken = true
+    try {
+      const res = await api.createToken(this.tokenName, this.tokenDays)
+      this.newToken = res.token
+      await this.loadTokens()
+    } catch (e) {
+      this.$swal({ icon: 'error', title: 'Unable to create a token', text: errorMessage(e) })
+    } finally {
+      this.creatingToken = false
+    }
+  }
+
+  async copyToken() {
+    try {
+      await navigator.clipboard.writeText(this.newToken)
+      this.$swal({ toast: true, position: 'bottom-end', timer: 1500, showConfirmButton: false, icon: 'success', title: 'Copied' })
+    } catch { /* select it instead */ }
+  }
+
+  closeToken() {
+    this.tokenDialog = false
+    this.newToken = ''
+    this.tokenName = ''
+    this.tokenDays = 90
+  }
+
+  async revokeToken(t: ApiToken) {
+    const { value } = await this.$swal({
+      title: 'Revoke token',
+      text: `Scripts using "${t.name}" stop working.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Revoke',
+    })
+    if (!value) return
+    await api.deleteToken(t.id)
+    await this.loadTokens()
+  }
+
   async revokeOthers() {
     await api.revokeOtherSessions()
     await this.loadSessions()
@@ -248,6 +360,7 @@ export default class AccountPage extends Vue {
     this.displayName = this.user.display_name
     this.email = this.user.email
     this.loadSessions()
+    this.loadTokens()
   }
 }
 </script>

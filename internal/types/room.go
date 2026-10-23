@@ -153,9 +153,12 @@ type RoomMember struct {
 type RoomEventAction string
 
 const (
-	RoomEventCreated   RoomEventAction = "created"
-	RoomEventStarted   RoomEventAction = "started"
-	RoomEventReady     RoomEventAction = "ready"
+	RoomEventCreated RoomEventAction = "created"
+	RoomEventStarted RoomEventAction = "started"
+	RoomEventReady   RoomEventAction = "ready"
+	// RoomEventResync means events may have been missed, listeners should
+	// reload the room list
+	RoomEventResync    RoomEventAction = "resync"
 	RoomEventStopped   RoomEventAction = "stopped"
 	RoomEventDestroyed RoomEventAction = "destroyed"
 	RoomEventPaused    RoomEventAction = "paused"
@@ -170,6 +173,10 @@ type RoomEvent struct {
 
 var ErrRoomNotFound = fmt.Errorf("room not found")
 
+// ErrImagePulling is returned while the image of a room is being
+// downloaded, try again in a moment.
+var ErrImagePulling = fmt.Errorf("the room image is being downloaded, this takes a minute the first time")
+
 type RoomManager interface {
 	Config() RoomsConfig
 	List(ctx context.Context, labels map[string]string) ([]RoomEntry, error)
@@ -182,6 +189,8 @@ type RoomManager interface {
 	GetStats(ctx context.Context, id string) (*RoomStats, error)
 	GetScreenshot(ctx context.Context, id string) ([]byte, error)
 	GetWindowTitle(ctx context.Context, id string) (string, error)
+	UpdateImage(ctx context.Context, image string) (bool, error)
+	EnsureImage(ctx context.Context, image string) error
 	OpenURL(ctx context.Context, id string, url string) error
 	Remove(ctx context.Context, id string) error
 

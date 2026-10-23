@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/m1k1o/neko-rooms/internal/config"
 	"github.com/m1k1o/neko-rooms/internal/types"
@@ -72,23 +73,63 @@ func newEvents(config *config.Room, client *dockerClient.Client) *events {
 func (e *events) Start() {
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 
-	// load initial metrics
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+
+		e.logger.Info().Msg("docker event listener started")
+		defer e.logger.Info().Msg("docker event listener stopped")
+
+		// the engine can be away, remote ones especially: keep reconnecting,
+		// and have listeners catch up on what they missed
+		first := true
+		backoff := time.Second
+		for {
+			if err := e.listen(first); err != nil {
+				e.logger.Warn().Err(err).Dur("retry", backoff).Msg("docker events unavailable")
+			} else {
+				return
+			}
+			first = false
+
+			select {
+			case <-e.ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < 30*time.Second {
+				backoff *= 2
+			}
+
+			e.broadcast(types.RoomEvent{Action: types.RoomEventResync})
+		}
+	}()
+}
+
+// listen follows docker events until the context ends (nil) or the stream
+// breaks (an error)
+func (e *events) listen(first bool) error {
+	// load metrics
 	containers, err := e.client.ContainerList(e.ctx, dockerContainer.ListOptions{
+		All: true,
 		Filters: dockerFilters.NewArgs(
 			dockerFilters.Arg("label", fmt.Sprintf("m1k1o.neko_rooms.instance=%s", e.config.InstanceName)),
 		),
 	})
 	if err != nil {
-		e.logger.Err(err).Msg("failed to list containers")
-		return
+		return err
 	}
 
+	running := 0
 	for _, container := range containers {
-		e.totalRooms.Inc()
+		if first {
+			e.totalRooms.Inc()
+		}
 		if container.State == "running" {
-			e.runningRooms.Inc()
+			running++
 		}
 	}
+	e.runningRooms.Set(float64(running))
 
 	msgs, errs := e.client.Events(e.ctx, dockerEvents.ListOptions{
 		Filters: dockerFilters.NewArgs(
@@ -104,87 +145,79 @@ func (e *events) Start() {
 		),
 	})
 
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
+	for {
+		select {
+		case <-e.ctx.Done():
+			e.logger.Info().Msg("docker event context closed")
+			return nil
+		case err, ok := <-errs:
+			if !ok {
+				return fmt.Errorf("docker event error channel closed")
+			}
+			if e.ctx.Err() != nil {
+				return nil
+			}
+			return err
+		case room := <-e.roomsReadyCh:
+			// ignore if room was already ready
+			if !e.setRoomReady(room.id) {
+				continue
+			}
 
-		e.logger.Info().Msg("docker event listener started")
-		defer e.logger.Info().Msg("docker event listener stopped")
+			e.broadcast(types.RoomEvent{
+				ID:     room.id,
+				Action: types.RoomEventReady,
 
-		for {
-			select {
-			case <-e.ctx.Done():
-				e.logger.Info().Msg("docker event context closed")
-				return
-			case err, ok := <-errs:
-				if !ok {
-					e.logger.Error().Msg("docker event error channel closed")
-					return
-				}
+				ContainerLabels: room.labels,
+			})
+		case msg := <-msgs:
+			roomId := msg.Actor.ID[:12]
+			labels := msg.Actor.Attributes
 
-				e.logger.Err(err).Msg("got docker event error")
-				return
-			case room := <-e.roomsReadyCh:
+			e.logger.Debug().
+				Str("id", roomId).
+				Str("action", string(msg.Action)).
+				Msg("got docker event")
+
+			var action types.RoomEventAction
+			switch msg.Action {
+			case dockerEvents.ActionCreate:
+				action = types.RoomEventCreated
+				e.totalRooms.Inc()
+			case dockerEvents.ActionStart:
+				action = types.RoomEventStarted
+				e.waitForRoomReady(roomId, labels)
+				e.runningRooms.Inc()
+			case dockerEvents.ActionHealthStatusHealthy:
+				action = types.RoomEventReady
 				// ignore if room was already ready
-				if !e.setRoomReady(room.id) {
+				if !e.setRoomReady(roomId) {
 					continue
 				}
-
-				e.broadcast(types.RoomEvent{
-					ID:     room.id,
-					Action: types.RoomEventReady,
-
-					ContainerLabels: room.labels,
-				})
-			case msg := <-msgs:
-				roomId := msg.Actor.ID[:12]
-				labels := msg.Actor.Attributes
-
-				e.logger.Debug().
-					Str("id", roomId).
-					Str("action", string(msg.Action)).
-					Msg("got docker event")
-
-				var action types.RoomEventAction
-				switch msg.Action {
-				case dockerEvents.ActionCreate:
-					action = types.RoomEventCreated
-					e.totalRooms.Inc()
-				case dockerEvents.ActionStart:
-					action = types.RoomEventStarted
-					e.waitForRoomReady(roomId, labels)
-					e.runningRooms.Inc()
-				case dockerEvents.ActionHealthStatusHealthy:
-					action = types.RoomEventReady
-					// ignore if room was already ready
-					if !e.setRoomReady(roomId) {
-						continue
-					}
-				case dockerEvents.ActionStop:
-					action = types.RoomEventStopped
-					e.setRoomNotReady(roomId)
-					e.runningRooms.Dec()
-				case dockerEvents.ActionDestroy:
-					action = types.RoomEventDestroyed
-				case dockerEvents.ActionPause:
-					action = types.RoomEventPaused
-					e.setRoomNotReady(roomId)
-					e.runningRooms.Dec()
-				case dockerEvents.ActionUnPause:
-					action = types.RoomEventStarted
-					e.waitForRoomReady(roomId, labels)
-					e.runningRooms.Inc()
-				}
-
-				e.broadcast(types.RoomEvent{
-					ID:     roomId,
-					Action: action,
-
-					ContainerLabels: labels,
-				})
+			case dockerEvents.ActionStop:
+				action = types.RoomEventStopped
+				e.setRoomNotReady(roomId)
+				e.runningRooms.Dec()
+			case dockerEvents.ActionDestroy:
+				action = types.RoomEventDestroyed
+			case dockerEvents.ActionPause:
+				action = types.RoomEventPaused
+				e.setRoomNotReady(roomId)
+				e.runningRooms.Dec()
+			case dockerEvents.ActionUnPause:
+				action = types.RoomEventStarted
+				e.waitForRoomReady(roomId, labels)
+				e.runningRooms.Inc()
 			}
+
+			e.broadcast(types.RoomEvent{
+				ID:     roomId,
+				Action: action,
+
+				ContainerLabels: labels,
+			})
 		}
-	}()
+	}
 }
 
 func (e *events) Shutdown() error {
