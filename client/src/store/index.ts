@@ -15,7 +15,8 @@ import {
 
 import { state, State } from './state'
 import app from './app'
-import Swal from 'sweetalert2'
+// the same build the $swal plugin uses, so popups it opened can be closed here
+import Swal from 'sweetalert2/dist/sweetalert2.js'
 import { AxiosError } from 'axios'
 
 Vue.use(Vuex)

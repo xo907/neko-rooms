@@ -1,6 +1,7 @@
 import Vue from 'vue'
 import { RawLocation } from 'vue-router'
-import Swal from 'sweetalert2'
+// the same build the $swal plugin uses, so popups it opened can be closed here
+import Swal from 'sweetalert2/dist/sweetalert2.js'
 import { api, errorMessage, Room } from '@/api-ext'
 import { isPlaying, openPlayer, player } from '@/player/state'
 
