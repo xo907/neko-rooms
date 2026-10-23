@@ -127,6 +127,15 @@ export function roomLink(name: string): string {
   return `${siteBase()}r/${encodeURIComponent(name)}`
 }
 
+// appLink opens a room in the WatchParty Android app, on this server
+export function appLink(name: string, invite?: string): string {
+  const q = new URLSearchParams({ server: siteBase(), name })
+  if (invite) q.set('invite', invite)
+  return `watchparty://room?${q.toString()}`
+}
+
+export const isAndroid = /Android/i.test(navigator.userAgent)
+
 // relativeTime says when something happens, e.g. "in 2 hours"
 export function relativeTime(at: Date, now = Date.now()): string {
   const mins = Math.round((at.getTime() - now) / 60000)
