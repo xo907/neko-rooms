@@ -178,6 +178,10 @@ func (manager *ApiManagerCtx) roomCreate(w http.ResponseWriter, r *http.Request)
 	}
 
 	ID, err := manager.rooms.Create(r.Context(), request.RoomSettings)
+	if errors.Is(err, types.ErrImagePulling) {
+		writePulling(w, request.NekoImage)
+		return
+	}
 	if err != nil {
 		manager.logger.Error().Err(err).Msg("create: failed to create room")
 		http.Error(w, err.Error(), 500)
@@ -283,42 +287,15 @@ func (manager *ApiManagerCtx) roomRecreate(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	if err := manager.rooms.Remove(r.Context(), roomId); err != nil {
-		manager.logger.Error().Err(err).Msg("recreate: failed to remove room")
-		http.Error(w, err.Error(), 500)
+	response, err := manager.recreateRoom(r.Context(), roomId, oldName, *settings, start)
+	if errors.Is(err, types.ErrImagePulling) {
+		writePulling(w, settings.NekoImage)
 		return
 	}
-
-	ID, err := manager.rooms.Create(r.Context(), *settings)
 	if err != nil {
-		manager.logger.Error().Err(err).Msg("recreate: failed to create room")
+		manager.logger.Error().Err(err).Msg("recreate: failed")
 		http.Error(w, err.Error(), 500)
 		return
-	}
-
-	if start {
-		if err := manager.rooms.Start(r.Context(), ID); err != nil {
-			manager.logger.Error().Err(err).Msg("recreate: failed to start room")
-			http.Error(w, err.Error(), 500)
-			return
-		}
-	}
-
-	response, err := manager.rooms.GetEntry(r.Context(), ID)
-	if err != nil {
-		manager.logger.Error().Err(err).Msg("recreate: failed to get room entry")
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	// keep metadata when the room was renamed
-	if response.Name != oldName {
-		if meta, err := manager.store.GetRoomMeta(oldName); err == nil {
-			meta.Name = response.Name
-			if err := manager.store.PutRoomMeta(meta); err == nil {
-				manager.store.DeleteRoomMeta(oldName)
-			}
-		}
 	}
 
 	manager.auth.Audit(r, "room.recreate", response.Name, "")
@@ -451,4 +428,51 @@ func (manager *ApiManagerCtx) dockerCompose(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "text/yaml")
 	w.Write(response)
+}
+
+// writePulling tells the client the image is still downloading, it can ask
+// again in a moment
+func writePulling(w http.ResponseWriter, image string) {
+	w.Header().Set("Retry-After", "5")
+	w.Header().Set("X-Neko-Rooms-Pulling", image)
+	http.Error(w, types.ErrImagePulling.Error(), http.StatusServiceUnavailable)
+}
+
+// recreateRoom replaces a room with one made from settings, keeping its
+// community metadata. The image is ready before the old room goes away.
+func (manager *ApiManagerCtx) recreateRoom(ctx context.Context, roomId, oldName string, settings types.RoomSettings, start bool) (*types.RoomEntry, error) {
+	if err := manager.rooms.EnsureImage(ctx, settings.NekoImage); err != nil {
+		return nil, err
+	}
+
+	if err := manager.rooms.Remove(ctx, roomId); err != nil {
+		return nil, fmt.Errorf("remove: %w", err)
+	}
+
+	ID, err := manager.rooms.Create(ctx, settings)
+	if err != nil {
+		return nil, fmt.Errorf("create: %w", err)
+	}
+
+	if start {
+		if err := manager.rooms.Start(ctx, ID); err != nil {
+			return nil, fmt.Errorf("start: %w", err)
+		}
+	}
+
+	response, err := manager.rooms.GetEntry(ctx, ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// keep metadata when the room was renamed
+	if response.Name != oldName {
+		if meta, err := manager.store.GetRoomMeta(oldName); err == nil {
+			meta.Name = response.Name
+			if err := manager.store.PutRoomMeta(meta); err == nil {
+				manager.store.DeleteRoomMeta(oldName)
+			}
+		}
+	}
+	return response, nil
 }

@@ -27,12 +27,13 @@
       </template>
       <template v-slot:[`item.neko_image`]="{ item }">
         <RoomActionBtn action="recreate" :roomId="item.id" />
+        <RoomActionBtn action="upgrade" :roomId="item.id" :roomName="item.name" @done="$emit('refresh')" />
         <span class="ml-3">{{ item.neko_image }}</span>
         <v-tooltip bottom open-delay="300" v-if="item.is_outdated">
           <template v-slot:activator="{ on, attrs }">
             <v-icon v-bind="attrs" v-on="on" class="ml-2" color="warning">mdi-update</v-icon>
           </template>
-          <div class="text-center">This image is outdated. <br> Recreate room to update it.</div>
+          <div class="text-center">A newer version of this image is here. <br> Use the update button to move the room to it.</div>
         </v-tooltip>
       </template>
       <template v-slot:[`item.max_connections`]="{ item }">

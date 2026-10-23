@@ -333,7 +333,9 @@ export default class RoomCard extends Vue {
   }
 
   get partyLabel(): string {
-    return this.partyAt ? relativeTime(this.partyAt, this.tick || Date.now()) : ''
+    // tick is a counter that changes every so often, it keeps this fresh
+    void this.tick
+    return this.partyAt ? relativeTime(this.partyAt) : ''
   }
 
   get emptyNote(): string {

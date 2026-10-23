@@ -119,6 +119,20 @@ var migrations = []string{
 		PRIMARY KEY (room, user_id)
 	);
 	`,
+	// 5: API tokens
+	`
+	CREATE TABLE api_tokens (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name         TEXT NOT NULL DEFAULT '',
+		hint         TEXT NOT NULL DEFAULT '',
+		hash         TEXT NOT NULL UNIQUE,
+		created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		last_used_at DATETIME,
+		expires_at   DATETIME
+	);
+	CREATE INDEX api_tokens_user ON api_tokens(user_id);
+	`,
 }
 
 type Store struct {

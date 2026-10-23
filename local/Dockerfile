@@ -1,6 +1,9 @@
 # Runtime image for local/up.sh, packs artifacts built by local/build.sh.
 # The regular Dockerfile in the repo root builds everything in one go.
-FROM scratch
+# alpine rather than scratch: CA certificates for HTTPS (Discord), and the
+# ssh client for docker engines reached over ssh://
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates openssh-client tzdata
 COPY neko_rooms /app/bin/neko_rooms
 COPY www/ /var/www
 

@@ -24,6 +24,8 @@ type ApiManagerCtx struct {
 
 	og      *og.Renderer // nil when the fonts did not load, link previews are off
 	ogCache ogCache
+
+	upgrades upgrades
 }
 
 func New(rooms types.RoomManager, pull types.PullManager, authManager *auth.Manager, brandingManager *branding.Manager, communityService *community.Service) *ApiManagerCtx {
@@ -101,6 +103,9 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 		r.Delete("/account/avatar", manager.accountAvatarDelete)
 		r.Post("/account/password", manager.accountPassword)
 		r.Get("/account/sessions", manager.accountSessions)
+		r.Get("/account/tokens", manager.accountTokens)
+		r.Post("/account/tokens", manager.accountTokenCreate)
+		r.Delete("/account/tokens/{tokenId}", manager.accountTokenDelete)
 		r.Delete("/account/sessions", manager.accountSessionsRevoke)
 
 		r.Group(func(r chi.Router) {
@@ -139,6 +144,7 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 
 		// roomId is actually room name here
 		r.Get("/rooms/{roomId}/by-name", manager.roomGetEntryByName)
+		r.Get("/upgrades/{roomName}", manager.roomUpgradeStatus)
 
 		r.Route("/rooms/{roomId}", func(r chi.Router) {
 			r.Use(manager.requireRoomManager)
@@ -158,6 +164,7 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 			r.Post("/restart", manager.roomGenericAction("room.restart", manager.rooms.Restart))
 			r.Post("/pause", manager.roomGenericAction("room.pause", manager.rooms.Pause))
 			r.Post("/recreate", manager.roomRecreate)
+			r.Post("/upgrade", manager.roomUpgrade)
 		})
 
 		//

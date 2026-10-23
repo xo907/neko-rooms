@@ -62,11 +62,84 @@ type Room struct {
 	RoomDefaults RoomDefaults
 
 	Traefik Traefik
+
+	// where rooms run: docker (containers), swarm (services) or k8s
+	Runtime string
+	Docker  Docker
+	Swarm   Swarm
+	K8s     K8s
+}
+
+// Docker is the docker engine rooms run on. It can be a remote one, over
+// TCP or SSH; rooms then publish their web port for neko-rooms to reach.
+type Docker struct {
+	Host      string // e.g. unix:///var/run/docker.sock, tcp://host:2376, ssh://user@host
+	RoomsHost string // address of the docker host as neko-rooms reaches it, set for remote engines
+	HTTPMin   uint16 // published web ports of rooms on a remote engine
+	HTTPMax   uint16
+}
+
+// Swarm runs rooms as docker swarm services.
+type Swarm struct {
+	Constraints []string // placement constraints, e.g. node.labels.neko==true
+}
+
+// K8s runs rooms as pods in a kubernetes cluster.
+type K8s struct {
+	Namespace    string
+	Kubeconfig   string            // empty uses the in-cluster service account
+	NodeSelector map[string]string // where room pods may run
+	PullPolicy   string            // Always (default, upgrades get new images), IfNotPresent or Never
 }
 
 func (Room) Init(cmd *cobra.Command) error {
 	cmd.PersistentFlags().Bool("mux", false, "use mux for connection - needs only one UDP and TCP port per room")
 	if err := viper.BindPFlag("mux", cmd.PersistentFlags().Lookup("mux")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("runtime", "docker", "where rooms run: docker, swarm or k8s")
+	if err := viper.BindPFlag("runtime", cmd.PersistentFlags().Lookup("runtime")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("docker.host", "", "docker engine, e.g. tcp://host:2376 or ssh://user@host (default: DOCKER_HOST or the local socket)")
+	if err := viper.BindPFlag("docker.host", cmd.PersistentFlags().Lookup("docker.host")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("docker.rooms_host", "", "address of a remote docker host as neko-rooms reaches it, rooms publish their web port there")
+	if err := viper.BindPFlag("docker.rooms_host", cmd.PersistentFlags().Lookup("docker.rooms_host")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("docker.http_ports", "58000-58999", "ports rooms publish their web port on, with docker.rooms_host")
+	if err := viper.BindPFlag("docker.http_ports", cmd.PersistentFlags().Lookup("docker.http_ports")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().StringSlice("swarm.constraints", []string{}, "swarm: placement constraints of room services")
+	if err := viper.BindPFlag("swarm.constraints", cmd.PersistentFlags().Lookup("swarm.constraints")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("k8s.namespace", "neko-rooms", "k8s: namespace rooms run in")
+	if err := viper.BindPFlag("k8s.namespace", cmd.PersistentFlags().Lookup("k8s.namespace")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("k8s.kubeconfig", "", "k8s: kubeconfig file (default: the in-cluster service account)")
+	if err := viper.BindPFlag("k8s.kubeconfig", cmd.PersistentFlags().Lookup("k8s.kubeconfig")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().String("k8s.pull_policy", "Always", "k8s: image pull policy of rooms: Always, IfNotPresent or Never")
+	if err := viper.BindPFlag("k8s.pull_policy", cmd.PersistentFlags().Lookup("k8s.pull_policy")); err != nil {
+		return err
+	}
+
+	cmd.PersistentFlags().StringSlice("k8s.node_selector", []string{}, "k8s: node labels room pods run on, key=value")
+	if err := viper.BindPFlag("k8s.node_selector", cmd.PersistentFlags().Lookup("k8s.node_selector")); err != nil {
 		return err
 	}
 
@@ -241,6 +314,54 @@ func (s *Room) Set() {
 	} else {
 		s.EprMin = min
 		s.EprMax = max
+	}
+
+	s.Runtime = strings.ToLower(strings.TrimSpace(viper.GetString("runtime")))
+	switch s.Runtime {
+	case "", "docker":
+		s.Runtime = "docker"
+	case "swarm", "k8s":
+	case "kubernetes":
+		s.Runtime = "k8s"
+	default:
+		log.Panic().Str("runtime", s.Runtime).Msg("invalid `runtime`, must be docker, swarm or k8s")
+	}
+
+	s.Docker.Host = viper.GetString("docker.host")
+	s.Docker.RoomsHost = viper.GetString("docker.rooms_host")
+	s.Docker.HTTPMin, s.Docker.HTTPMax = 58000, 58999
+	if r := viper.GetString("docker.http_ports"); r != "" {
+		lo, hi, ok := strings.Cut(r, "-")
+		a, errA := strconv.ParseUint(strings.TrimSpace(lo), 10, 16)
+		b, errB := strconv.ParseUint(strings.TrimSpace(hi), 10, 16)
+		if !ok || errA != nil || errB != nil || a == 0 || b < a {
+			log.Panic().Str("docker.http_ports", r).Msg("invalid `docker.http_ports`, must be like 58000-58999")
+		}
+		s.Docker.HTTPMin, s.Docker.HTTPMax = uint16(a), uint16(b)
+	}
+
+	s.Swarm.Constraints = viper.GetStringSlice("swarm.constraints")
+
+	s.K8s.Namespace = viper.GetString("k8s.namespace")
+	if s.K8s.Namespace == "" {
+		s.K8s.Namespace = "neko-rooms"
+	}
+	s.K8s.Kubeconfig = viper.GetString("k8s.kubeconfig")
+	s.K8s.PullPolicy = viper.GetString("k8s.pull_policy")
+	switch s.K8s.PullPolicy {
+	case "":
+		s.K8s.PullPolicy = "Always"
+	case "Always", "IfNotPresent", "Never":
+	default:
+		log.Panic().Str("k8s.pull_policy", s.K8s.PullPolicy).Msg("invalid `k8s.pull_policy`, must be Always, IfNotPresent or Never")
+	}
+	s.K8s.NodeSelector = map[string]string{}
+	for _, kv := range viper.GetStringSlice("k8s.node_selector") {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" {
+			log.Panic().Str("k8s.node_selector", kv).Msg("invalid `k8s.node_selector`, must be key=value")
+		}
+		s.K8s.NodeSelector[strings.TrimSpace(k)] = strings.TrimSpace(v)
 	}
 
 	s.NAT1To1IPs = viper.GetStringSlice("nat1to1")

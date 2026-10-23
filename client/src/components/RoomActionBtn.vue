@@ -11,11 +11,13 @@
 <script lang="ts">
 import { Vue, Component, Prop } from 'vue-property-decorator'
 import { AxiosError } from 'axios'
+import { api, errorMessage } from '@/api-ext'
 
 @Component
 export default class RoomActionBtn extends Vue {
   @Prop(String) readonly action!: string
   @Prop(String) readonly roomId!: string
+  @Prop(String) readonly roomName!: string
   @Prop(Boolean) readonly disabled!: boolean
 
   public loading = false
@@ -63,6 +65,13 @@ export default class RoomActionBtn extends Vue {
           color: 'blue',
           icon: 'mdi-cloud-refresh',
         }
+      case 'upgrade':
+        return {
+          msg: 'Room updated!',
+          tooltip: 'Update the image: pull the newest version and recreate the room on it',
+          color: 'primary',
+          icon: 'mdi-update',
+        }
       case 'remove':
         return {
           dispatch: 'ROOMS_REMOVE',
@@ -74,6 +83,31 @@ export default class RoomActionBtn extends Vue {
     }
 
     return undefined
+  }
+
+  // upgrade pulls in the background on the server and waits for it here
+  async upgrade() {
+    this.loading = true
+    try {
+      // eslint-disable-next-line
+      let state: any = await api.upgradeRoom(this.roomId)
+      while (state.state === 'pulling' || state.state === 'recreating') {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        state = await api.upgradeStatus(this.roomName)
+      }
+      if (state.state === 'failed') throw new Error(state.error || 'The update failed')
+
+      this.$emit('done', this.action)
+      this.$swal({
+        title: state.up_to_date ? 'Already up to date' : 'Room updated!',
+        text: state.up_to_date ? 'The room runs the newest version of its image.' : 'The room was recreated on the newest image.',
+        icon: 'success',
+      })
+    } catch (e) {
+      this.$swal({ title: 'Unable to update', text: errorMessage(e), icon: 'error' })
+    } finally {
+      this.loading = false
+    }
   }
 
   async Action() {
@@ -90,6 +124,19 @@ export default class RoomActionBtn extends Vue {
       })
 
       if (!value) return
+    } else if (this.action === 'upgrade') {
+      const { value } = await this.$swal({
+        title: 'Update room',
+        text: 'Pull the newest version of the image and recreate the room on it, when there is one. Data that is not kept in storage is lost.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Update',
+        cancelButtonText: 'Cancel',
+      })
+
+      if (!value) return
+      await this.upgrade()
+      return
     } else if (this.action === 'recreate') {
       const { value } = await this.$swal({
         title: "Recreate room",

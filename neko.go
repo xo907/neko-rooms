@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -22,6 +21,7 @@ import (
 	"github.com/m1k1o/neko-rooms/internal/room"
 	"github.com/m1k1o/neko-rooms/internal/server"
 	"github.com/m1k1o/neko-rooms/internal/store"
+	"github.com/m1k1o/neko-rooms/internal/types"
 )
 
 const Header = `&34
@@ -117,7 +117,7 @@ type MainCtx struct {
 	authManager      *auth.Manager
 	brandingManager  *branding.Manager
 	communityService *community.Service
-	roomManager      *room.RoomManagerCtx
+	roomManager      types.RoomManager
 	pullManager      *pull.PullManagerCtx
 	apiManager       *api.ApiManagerCtx
 	proxyManager     *proxy.ProxyManagerCtx
@@ -151,10 +151,7 @@ func (main *MainCtx) Start() {
 		main.logger.Panic().Err(err).Msg("unable to load branding")
 	}
 
-	client, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
+	client, err := room.NewDockerClient(main.Configs.Room.Docker.Host)
 	if err != nil {
 		main.logger.Panic().Err(err).Msg("unable to connect to docker client")
 	} else {
@@ -163,10 +160,18 @@ func (main *MainCtx) Start() {
 			Msg("successfully connected to docker client (API negotiation enabled)")
 	}
 
-	main.roomManager = room.New(
-		client,
-		main.Configs.Room,
-	)
+	switch main.Configs.Room.Runtime {
+	case "swarm":
+		main.roomManager = room.NewSwarm(client, main.Configs.Room)
+	case "k8s":
+		main.roomManager, err = room.NewK8s(main.Configs.Room)
+		if err != nil {
+			main.logger.Panic().Err(err).Msg("unable to connect to kubernetes")
+		}
+	default:
+		main.roomManager = room.New(client, main.Configs.Room)
+	}
+	main.logger.Info().Str("runtime", main.Configs.Room.Runtime).Msg("rooms runtime")
 	main.roomManager.EventsLoopStart()
 
 	main.pullManager = pull.New(

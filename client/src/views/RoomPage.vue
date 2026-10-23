@@ -34,7 +34,7 @@
               <span class="nr-dot" />{{ room.viewers }} {{ room.viewers === 1 ? 'person' : 'people' }} watching
             </div>
             <div v-else-if="room.sleeping" class="nr-preview-note">Asleep while empty, joining wakes it up</div>
-            <div v-else-if="partyAt" class="nr-preview-note">Starts {{ partyRelative }}</div>
+            <div v-else-if="partyAt" class="nr-preview-note">{{ partyDate }}</div>
           </div>
         </div>
 
@@ -117,6 +117,7 @@
             <RoomActionBtn action="stop" :roomId="room.id" :disabled="!room.running && !room.paused" @done="load" />
             <RoomActionBtn action="pause" :roomId="room.id" :disabled="!room.running" @done="load" />
             <RoomActionBtn action="restart" :roomId="room.id" :disabled="!room.running" @done="load" />
+            <RoomActionBtn action="upgrade" :roomId="room.id" :roomName="room.name" @done="load" />
             <v-spacer />
             <RoomActionBtn action="remove" :roomId="room.id" @done="$router.push({ name: 'home' })" />
           </div>
@@ -233,6 +234,7 @@
   gap: 6px;
   .nr-pill-chip { text-transform: capitalize; }
 }
+.nr-room-tags .nr-pill-chip.is-accent { text-transform: none; }
 .nr-pill-chip.is-accent {
   color: var(--nr-primary);
   border-color: color-mix(in srgb, var(--nr-primary) 35%, transparent);

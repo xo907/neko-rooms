@@ -158,6 +158,15 @@ export interface Session {
   current: boolean
 }
 
+export interface ApiToken {
+  id: number
+  name: string
+  hint: string
+  created_at: string
+  last_used_at: string | null
+  expires_at: string | null
+}
+
 export interface Asset {
   name: string
   mime: string
@@ -342,6 +351,10 @@ export const api = {
     // eslint-disable-next-line
     http.post('/account/password', { current_password: current, new_password: next }),
   sessions: () => http.get<Session[]>('/account/sessions').then(r => r.data),
+  tokens: () => http.get<ApiToken[]>('/account/tokens').then(r => r.data),
+  // eslint-disable-next-line
+  createToken: (name: string, expiresDays: number) => http.post<{ token: string; info: ApiToken }>('/account/tokens', { name, expires_days: expiresDays }).then(r => r.data),
+  deleteToken: (id: number) => http.delete('/account/tokens/' + id),
   revokeOtherSessions: () => http.delete('/account/sessions'),
 
   // branding
@@ -382,6 +395,11 @@ export const api = {
   userSessions: (id: number) => http.get<Session[]>('/admin/users/' + id + '/sessions').then(r => r.data),
   revokeUserSessions: (id: number) => http.delete('/admin/users/' + id + '/sessions'),
   adminRooms: () => http.get<Room[]>('/admin/rooms').then(r => r.data),
+  // eslint-disable-next-line
+  upgradeRoom: (id: string) => http.post<any>('/rooms/' + id + '/upgrade').then(r => r.data),
+  // eslint-disable-next-line
+  upgradeStatus: (name: string) => http.get<any>('/upgrades/' + encodeURIComponent(name)).then(r => r.data),
+
   policy: () => http.get<Policy>('/admin/policy').then(r => r.data),
   integrations: () => http.get<Integrations>('/admin/integrations').then(r => r.data),
   updateIntegrations: (i: Integrations) => http.put<Integrations>('/admin/integrations', i).then(r => r.data),

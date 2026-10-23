@@ -15,6 +15,8 @@ import {
 
 import { state, State } from './state'
 import app from './app'
+import Swal from 'sweetalert2'
+import { AxiosError } from 'axios'
 
 Vue.use(Vuex)
 
@@ -25,6 +27,36 @@ const configuration = new Configuration({
 const configApi = new ConfigApi(configuration)
 const roomsApi = new RoomsApi(configuration)
 const defaultApi = new DefaultApi(configuration)
+
+// whilePulling retries a request while the server downloads a room image,
+// the first room on an image waits for it
+async function whilePulling<T>(request: () => Promise<T>): Promise<T> {
+  let shown = false
+  try {
+    for (;;) {
+      try {
+        return await request()
+      } catch (e) {
+        const res = (e as AxiosError).response
+        const image = res && res.status === 503 && res.headers['x-neko-rooms-pulling']
+        if (!image) throw e
+        if (!shown) {
+          shown = true
+          Swal.fire({
+            title: 'Downloading the browser',
+            text: `The first room with ${image} waits for it to download. This takes a minute or two.`,
+            showConfirmButton: false,
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading() },
+          })
+        }
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
+    }
+  } finally {
+    if (shown) Swal.close()
+  }
+}
 
 export default new Vuex.Store({
   state,
@@ -92,12 +124,12 @@ export default new Vuex.Store({
       commit('ROOMS_SET', res.data);
     },
     async ROOMS_CREATE({ commit }: ActionContext<State, State>, roomSettings: RoomSettings): Promise<RoomEntry> {
-      const res = await roomsApi.roomCreate(roomSettings, false)
+      const res = await whilePulling(() => roomsApi.roomCreate(roomSettings, false))
       commit('ROOMS_ADD', res.data);
       return res.data
     },
     async ROOMS_CREATE_AND_START({ commit }: ActionContext<State, State>, roomSettings: RoomSettings): Promise<RoomEntry> {
-      const res = await roomsApi.roomCreate(roomSettings, true)
+      const res = await whilePulling(() => roomsApi.roomCreate(roomSettings, true))
       commit('ROOMS_ADD', res.data);
       return res.data
     },
@@ -149,7 +181,7 @@ export default new Vuex.Store({
       await roomsApi.roomRestart(roomId)
     },
     async ROOMS_RECREATE({ commit }: ActionContext<State, State>, roomId: string) {
-      const res = await roomsApi.roomRecreate(roomId, {} as RoomSettings)
+      const res = await whilePulling(() => roomsApi.roomRecreate(roomId, {} as RoomSettings))
       commit('ROOMS_DEL', roomId)
       commit('ROOMS_PUT', res.data)
       return res.data

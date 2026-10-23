@@ -1,5 +1,11 @@
 # Docs
 
+- [Run locally, on a VPS, with Nginx Proxy Manager or on a Raspberry Pi](local.md)
+- [Remote docker, Docker Swarm and Kubernetes](runtimes.md)
+- [Admin panel](admin-panel.md)
+- [API and tokens](api.md)
+- [Storage](storage.md)
+
 Case study: having 2 rooms, every with max 5 users, they only need 10 ports to be forwarded so the range can be `59000-59009`.
 
 ![architecture](./architecture.svg)
