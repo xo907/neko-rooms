@@ -1,163 +1,124 @@
-# neko-rooms
+# neko-rooms · WatchParty edition
+
+Self-hosted watch parties. Everyone in a room sees and hears the same browser, takes turns controlling it and chats on the side, from the web or the Android app.
+
+This is a fork of [m1k1o/neko-rooms](https://github.com/m1k1o/neko-rooms), the room manager for [n.eko](https://github.com/m1k1o/neko). It adds a community homepage, accounts and friends, watch parties, link previews, Discord posts, an Android app and more ways to run it: one machine, a Raspberry Pi, a VPS, a remote docker host, Docker Swarm or Kubernetes.
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/m1k1o/neko-rooms" alt="release">
-  <img src="https://img.shields.io/github/license/m1k1o/neko-rooms" alt="license">
-  <img src="https://img.shields.io/docker/pulls/m1k1o/neko-rooms" alt="pulls">
-  <img src="https://img.shields.io/github/issues/m1k1o/neko-rooms" alt="issues">
-  <a href="https://discord.gg/3U6hWpC" ><img src="https://discordapp.com/api/guilds/665851821906067466/widget.png" alt="Chat on discord"></a>
+  <img src="docs/images/home.png" alt="Homepage with live rooms" width="100%">
 </p>
 
-Simple room management system for [n.eko](https://github.com/m1k1o/neko). Self hosted rabb.it alternative.
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/player.png" alt="Inside a room"><br><sub><b>Inside a room</b>: what is playing at the top, raise your hand for control.</sub></td>
+    <td width="50%"><img src="docs/images/room.png" alt="Room page"><br><sub><b>Room page</b>: live preview, who is in, share link.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/party.png" alt="Watch party"><br><sub><b>Watch parties</b>: RSVP, add to calendar, the room starts on its own.</sub></td>
+    <td><img src="docs/images/preview.png" alt="Link preview"><br><sub><b>Link previews</b>: shared links show the room in Discord and other apps.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/admin.png" alt="Admin settings"><br><sub><b>Admin</b>: sleeping rooms, now playing, Discord posts and more.</sub></td>
+    <td align="center"><img src="docs/images/mobile.png" alt="On a phone" width="45%"><br><sub><b>On a phone</b>, and there is an Android app.</sub></td>
+  </tr>
+</table>
 
-> **This fork** adds a public homepage with a live room directory, user accounts with admin/user roles, friends, room visibility (public / friends / private with invite links) and an admin panel with full branding & theme customization. See [docs/admin-panel.md](./docs/admin-panel.md).
->
-> ```bash
-> docker pull ghcr.io/xo907/neko-rooms:latest
-> ```
+## What it does
 
-<div align="center">
-  <img src="https://github.com/m1k1o/neko-rooms/raw/master/docs/rooms.png" alt="rooms">
-  <img src="https://github.com/m1k1o/neko-rooms/raw/master/docs/new_room.png" alt="new room">
-  <img src="https://github.com/m1k1o/neko-rooms/raw/master/docs/neko.gif" alt="n.eko">
-</div>
+**Watching together**
+- Shared browser rooms on [n.eko](https://github.com/m1k1o/neko): video and sound for everyone, one person in control at a time, chat.
+- **Now playing**: room cards, previews and Discord posts show the page open in the room.
+- **Raise hand** to get control next, the person in control hands it over with a click.
+- Reactions with neko's emotes, shared with the Android app.
+- **Watch parties**: give a room a start time, people RSVP and add it to their calendar, the homepage lists what is coming up, the room starts two minutes early.
 
-## Run locally (no domain, share over Tailscale)
+**Community**
+- A homepage with live rooms, categories and search, rooms that are public, for friends or invite only.
+- Accounts with profile photos, friends, roles; an admin panel with branding and theme, policies and an audit log.
+- Share links (`yoursite/r/room`) with previews of the room, its host and what is on.
+- **Discord**: posts to a channel when public rooms go live, people start watching or a party is planned.
+
+**Running it**
+- **Sleep when empty**: rooms nobody is in stop after 30 minutes and wake up when someone joins.
+- **Room templates**: YouTube, Twitch, music or movie night rooms with a start page, and ad blocking when storage is on.
+- **Update button**: pulls the newest image of a room and recreates it with the same settings. Images that are not there yet are pulled when a room needs them.
+- **API tokens** for scripts (`Authorization: Bearer ...`), see [docs/api.md](docs/api.md).
+- **Anywhere**: locally over Tailscale, a Raspberry Pi, a VPS with or without a domain, a remote docker host over TCP or SSH, Docker Swarm, Kubernetes.
+
+## Get started
+
+### On your computer, shared over Tailscale
 
 ```bash
+git clone https://github.com/xo907/neko-rooms.git && cd neko-rooms
 ./local/up.sh        # Windows: .\local\up.ps1
 ```
 
-Builds this checkout, starts it on `http://localhost:8188` and prints the tailnet URLs. See [docs/local.md](./docs/local.md).
+Builds this checkout and starts it on `http://localhost:8188`, then prints the addresses for your tailnet. No domain needed. [More](docs/local.md)
 
-## Watch together
+### On a VPS
 
-- **Now playing**: room cards, link previews and Discord posts show the title of the page open in the room.
-- **Reactions, raised hands and an up next queue** inside rooms (web and Android): send emoji that float over everyone's video, raise a hand to get control next, add links everyone can vote on and play the top one.
-- **Watch parties**: give a room a start time, people RSVP and add it to their calendar, the room starts on its own.
-- **Sleep when empty**: rooms nobody is in stop after 30 minutes (Admin → Settings) and wake up when someone joins.
-- **Discord**: paste a channel webhook in Admin → Settings to post when public rooms go live, people start watching, or a party is planned.
-- **Room templates**: YouTube, Twitch, music or movie night rooms with a start page (and ad blocking where browser policies are available).
-- **Link previews**: share `yoursite/r/room` links and chat apps show the room, its host and what is on.
-
-## Android app
-
-**WatchParty** is a native Android app for any neko-rooms server: rooms list, sign in, friends, profile photos and a native room player with chat, remote control, touch input and keyboard.
-
-Download `WatchParty.apk` from the [latest release](https://github.com/xo907/neko-rooms/releases?q=android-v&expanded=true) on your phone, open it to install, then enter your server's address. Source in [android/](./android), built by GitHub Actions; push a tag like `android-v0.2.0` to publish a new release.
-
-## Run on a VPS (public IP, no domain)
-
-On a server with Docker and git, open it to everyone on its public IP:
+Open to everyone on the server's public IP:
 
 ```bash
 git clone https://github.com/xo907/neko-rooms.git && cd neko-rooms && ./local/up.sh --public
 ```
 
-It uses the published image, prints the address and the firewall ports to open. Run `./local/up.sh` again later to update. Details: [docs/local.md](./docs/local.md#vps-public-ip).
+With [Nginx Proxy Manager](https://nginxproxymanager.com) for a domain and HTTPS, use `--npm` instead; it prints what to enter in the NPM web UI. Run the same command again later to update. [VPS](docs/local.md#vps-public-ip) · [NPM](docs/local.md#nginx-proxy-manager-domain--https)
 
-### With Nginx Proxy Manager (domain + HTTPS)
+### On a Raspberry Pi
 
-If the server runs [Nginx Proxy Manager](https://nginxproxymanager.com), use `--npm` instead:
-
-```bash
-git clone https://github.com/xo907/neko-rooms.git && cd neko-rooms && ./local/up.sh --npm
-```
-
-It joins NPM's docker network, keeps its own port private and prints exactly what to enter in the NPM web UI (proxy host, Websockets, SSL, one Advanced snippet). Step by step: [docs/local.md](./docs/local.md#nginx-proxy-manager-domain--https).
-
-## Run on a Raspberry Pi
-
-On a Raspberry Pi 4 or 5 with a **64-bit Raspberry Pi OS or Debian**, run (as a normal user with sudo, or as root):
+Pi 4 or 5 with a 64-bit Raspberry Pi OS or Debian:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xo907/neko-rooms/master/local/pi-install.sh | bash
 ```
 
-The script installs Docker and Tailscale if needed (and asks you to sign in to your tailnet), then starts neko-rooms with a lightweight Pi profile and prints the address to open. Run the same command again to update. Details and tuning: [docs/local.md](./docs/local.md#raspberry-pi).
+Installs Docker and Tailscale when needed and starts a lighter Pi profile. [More](docs/local.md#raspberry-pi)
 
-On a minimal Debian without `curl`, run `apt install curl` first.
-
-## Zero-knowledge installation (with HTTPS)
-
-No experience with Docker and reverse proxy? No problem! Follow these steps to set up your Neko Rooms quickly and securely:
-
-- Rent a VPS with public IP and OS Ubuntu.
-- Get a domain name pointing to your IP (you can even get some for free).
-- Run install script and follow instructions.
-- Secure using HTTPs thanks to Let's Encrypt and Traefik or NGINX.
+### Remote docker, Swarm, Kubernetes
 
 ```bash
-wget -O neko-rooms-traefik.sh https://raw.githubusercontent.com/xo907/neko-rooms/master/traefik/install
-sudo bash neko-rooms-traefik.sh
+kubectl apply -f deploy/k8s/neko-rooms.yaml
 ```
 
-### Community Installation Scripts
+Rooms can run on another docker host (`NEKO_ROOMS_DOCKER_HOST=ssh://user@host` or `tcp://`), as Swarm services (`NEKO_ROOMS_RUNTIME=swarm`) or as Kubernetes pods (`NEKO_ROOMS_RUNTIME=k8s`). [How](docs/runtimes.md)
 
-We have community-contributed installation scripts available. Check out our [community installation guides](./community/README.md) for instructions on installing neko-rooms on various Linux distributions. These scripts are maintained by the community and support different Linux distributions like Arch Linux, Fedora, and more.
-
-## How to start
-
-If you want to use Traefik as reverse proxy, visit [installation guide for traefik as reverse proxy](./traefik/).
-
-Otherwise modify variables in `docker-compose.yml` and just run `docker-compose up -d`.
-
-### Download images / update
-
-You need to pull all your images, that you want to use with neko-room. Otherwise, you might get this error: `Error response from daemon: No such image:` (see issue #1).
-
-```sh
-docker pull ghcr.io/m1k1o/neko/firefox
-docker pull ghcr.io/m1k1o/neko/chromium
-# etc...
-```
-
-If you want to update neko image, you need to pull new image and recreate all rooms, that use old image. To update neko rooms, simply run:
-
-```sh
-docker-compose pull
-docker-compose up -d
-```
-
-### Enable storage
-
-You might have encountered this error:
-
-> Mounts cannot be specified because storage is disabled or unavailable.
-
-If you didn't specify storage yet, you can do it using [this tutorial](./docs/storage.md).
-
-### Use nvidia GPU
-
-If you want to use nvidia GPU, you need to install [nvidia-docker](https://github.com/NVIDIA/nvidia-docker).
-
-Change neko images to nvidia images in `docker-compose.yml` using envorinment variable `NEKO_ROOMS_NEKO_IMAGES`:
+### Docker image
 
 ```bash
-NEKO_ROOMS_NEKO_IMAGES="
-  ghcr.io/m1k1o/neko/nvidia-chromium:latest
-  ghcr.io/m1k1o/neko/nvidia-google-chrome:latest
-  ghcr.io/m1k1o/neko/nvidia-microsoft-edge:latest
-  ghcr.io/m1k1o/neko/nvidia-brave:latest
-"
+docker pull ghcr.io/xo907/neko-rooms:latest
 ```
 
-When creating new room, you need to specify to use GPU in expext settings.
+The classic setups with Traefik from upstream still work: [traefik/](traefik/), [docker-compose.yml](docker-compose.yml).
 
-### Docs
+## Android app
 
-For more information visit [docs](./docs).
+**WatchParty** is a native app for any neko-rooms server: browse and join rooms, watch with chat, take control with touch, mouse or keyboard, raise your hand, react, RSVP to parties, manage your account and friends.
 
-### Roadmap:
- - [x] add GUI
- - [x] add HTTPS support
- - [x] add authentication provider for traefik
- - [x] allow specifying custom ENV variables
- - [x] allow mounting directories for persistent data
- - [x] optionally remove Traefik as dependency
- - [ ] add upgrade button
- - [ ] auto pull images, that do not exist
- - [ ] add bearer token to for API
- - [ ] add docker SSH / TCP support
- - [ ] add docker swarm support
- - [ ] add k8s support
+Download `WatchParty.apk` from the [latest release](https://github.com/xo907/neko-rooms/releases?q=android-v&expanded=true) on your phone, open it to install and enter your server's address. Source in [android/](android/).
+
+## Settings
+
+The most used ones; everything else is in `neko_rooms serve --help` and the admin panel.
+
+| Variable | |
+|---|---|
+| `NEKO_ROOMS_NAT1TO1` | public address of the machine rooms run on, viewers get video from there |
+| `NEKO_ROOMS_EPR` | UDP/TCP ports rooms use for video, e.g. `59000-59049` |
+| `NEKO_ROOMS_MUX` | one port per room instead of one per viewer, `true` is the easy choice |
+| `NEKO_ROOMS_NEKO_IMAGES` | the browsers and apps rooms may use |
+| `NEKO_ROOMS_ADMIN_USERNAME`, `_PASSWORD` | first admin account; no password prints a setup token in the log |
+| `NEKO_ROOMS_RUNTIME` | `docker` (default), `swarm` or `k8s` |
+| `NEKO_ROOMS_DOCKER_HOST` | another docker engine, `tcp://` or `ssh://` |
+| `NEKO_ROOMS_STORAGE_ENABLED` | persistent room data, browser policies and extensions ([storage](docs/storage.md)) |
+
+Room automation (sleeping rooms, now playing) and Discord are set in **Admin → Settings**, branding and theme in **Admin → Branding** ([admin panel](docs/admin-panel.md)).
+
+## Updating
+
+Run the install command again (`./local/up.sh`, `--public`, `--npm` or the Pi script), it pulls the new version and keeps your data. Room images are updated per room with the **Update** button in **My rooms** or on the room page.
+
+## Credits
+
+Built on [n.eko](https://github.com/m1k1o/neko) and [neko-rooms](https://github.com/m1k1o/neko-rooms) by [m1k1o](https://github.com/m1k1o) and contributors. Apache License 2.0.
