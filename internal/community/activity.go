@@ -135,6 +135,7 @@ func (s *Service) WakeByName(ctx context.Context, name string) bool {
 	if err != nil {
 		return false
 	}
+	s.recordActivity(name)
 	return s.wake(ctx, entry) == nil
 }
 
@@ -159,6 +160,9 @@ func (s *Service) afterRefresh(entries []types.RoomEntry, prev, next map[string]
 	a.primed = true
 	now := time.Now()
 
+	// rooms that went to sleep, for the warm-up
+	sleeping := map[string]func(){}
+
 	for i := range entries {
 		e := entries[i]
 		meta := metas[e.Name]
@@ -171,6 +175,11 @@ func (s *Service) afterRefresh(entries []types.RoomEntry, prev, next map[string]
 		}
 
 		// Discord
+		// owner-only control is a neko setting, a started room needs it again
+		if ready && !a.ready[e.Name] && meta != nil && meta.OwnerControl {
+			go s.ApplyRoomControl(e.Name, true)
+		}
+
 		if !first && ready && !a.ready[e.Name] {
 			if in.NotifyLive {
 				s.notifyLocked(in, "live", e, meta, st)
@@ -199,6 +208,17 @@ func (s *Service) afterRefresh(entries []types.RoomEntry, prev, next map[string]
 			delete(a.lastActive, e.Name)
 		}
 
+		if in.PredictiveWake && in.AutoSleepMinutes > 0 && !e.Running && meta != nil && meta.Sleeping {
+			entry := e
+			sleeping[e.Name] = func() {
+				ctx, cancel := context.WithTimeout(s.ctx, time.Minute)
+				defer cancel()
+				if err := s.wake(ctx, &entry); err != nil {
+					s.logger.Err(err).Str("room", entry.Name).Msg("unable to warm up room")
+				}
+			}
+		}
+
 		// watch parties start on their own
 		if meta != nil && meta.ScheduledAt != nil && partyOn(meta, now, partyWindow) {
 			at := *meta.ScheduledAt
@@ -219,9 +239,10 @@ func (s *Service) afterRefresh(entries []types.RoomEntry, prev, next map[string]
 			}
 		}
 	}
+
+	s.warmUp(sleeping)
 }
 
-// openStartPage opens the room's start page once its browser is up
 func (s *Service) openStartPage(e types.RoomEntry, link string) {
 	select {
 	case <-s.ctx.Done():

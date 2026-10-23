@@ -47,6 +47,14 @@
       persistent-hint
       class="mb-2"
     />
+    <v-switch v-model="data.owner_control" inset dense hide-details class="mt-2">
+      <template v-slot:label>
+        <div>
+          <div>Only I control the browser</div>
+          <div class="caption text--secondary">For rooms signed in to your accounts: everyone watches, only you and admins can click and type.</div>
+        </div>
+      </template>
+    </v-switch>
     <v-switch v-model="data.keep_awake" inset dense hide-details class="mt-2">
       <template v-slot:label>
         <div>
@@ -107,6 +115,8 @@ export default class RoomMetaEditor extends Vue {
     scheduled: '' as string | null, // datetime-local value
     // eslint-disable-next-line
     start_url: '' as string | null,
+    // eslint-disable-next-line
+    owner_control: false,
   }
 
   saving = false
@@ -166,6 +176,8 @@ export default class RoomMetaEditor extends Vue {
       scheduled: m ? this.localInput(m.scheduled_at) : '',
       // eslint-disable-next-line
       start_url: m ? m.start_url : '',
+      // eslint-disable-next-line
+      owner_control: m ? m.owner_control : false,
     }
   }
 
@@ -194,6 +206,8 @@ export default class RoomMetaEditor extends Vue {
         scheduled_at: this.data.scheduled ? new Date(this.data.scheduled).toISOString() : '',
         // eslint-disable-next-line
         start_url: this.data.start_url || '',
+        // eslint-disable-next-line
+        owner_control: this.data.owner_control,
       }
       if (this.isAdmin && this.moderation) {
         update.featured = this.data.featured

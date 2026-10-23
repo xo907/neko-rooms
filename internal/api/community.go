@@ -95,13 +95,14 @@ func (manager *ApiManagerCtx) publicRoomThumbnail(w http.ResponseWriter, r *http
 //
 
 type roomMetaRequest struct {
-	Title       *string           `json:"title"`
-	Description *string           `json:"description"`
-	Category    *string           `json:"category"`
-	Visibility  *store.Visibility `json:"visibility"`
-	KeepAwake   *bool             `json:"keep_awake"`
-	ScheduledAt *string           `json:"scheduled_at"` // RFC 3339, empty to cancel
-	StartURL    *string           `json:"start_url"`
+	Title        *string           `json:"title"`
+	Description  *string           `json:"description"`
+	Category     *string           `json:"category"`
+	Visibility   *store.Visibility `json:"visibility"`
+	KeepAwake    *bool             `json:"keep_awake"`
+	ScheduledAt  *string           `json:"scheduled_at"` // RFC 3339, empty to cancel
+	StartURL     *string           `json:"start_url"`
+	OwnerControl *bool             `json:"owner_control"`
 
 	// admin only
 	Featured *bool  `json:"featured"`
@@ -140,6 +141,9 @@ func (manager *ApiManagerCtx) applyRoomMeta(u *store.User, meta *store.RoomMeta,
 
 	if req.KeepAwake != nil {
 		meta.KeepAwake = *req.KeepAwake
+	}
+	if req.OwnerControl != nil {
+		meta.OwnerControl = *req.OwnerControl
 	}
 	if req.StartURL != nil {
 		meta.StartURL = ""
@@ -247,6 +251,7 @@ func (manager *ApiManagerCtx) roomMetaUpdate(w http.ResponseWriter, r *http.Requ
 	}
 
 	before := meta.ScheduledAt
+	wasLocked := meta.OwnerControl
 	if err := manager.applyRoomMeta(auth.UserFromContext(r.Context()), meta, req); err != nil {
 		var br badRequest
 		if errors.As(err, &br) {
@@ -260,6 +265,11 @@ func (manager *ApiManagerCtx) roomMetaUpdate(w http.ResponseWriter, r *http.Requ
 	if err := manager.store.PutRoomMeta(meta); err != nil {
 		manager.writeErr(w, err)
 		return
+	}
+
+	// a running room takes the change right away
+	if meta.OwnerControl != wasLocked {
+		go manager.community.ApplyRoomControl(meta.Name, meta.OwnerControl)
 	}
 
 	// a new party time is announced, a cancelled party forgets who was going

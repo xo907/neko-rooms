@@ -26,6 +26,9 @@ type Integrations struct {
 	// up when someone joins.
 	AutoSleepMinutes int `json:"auto_sleep_minutes"`
 
+	// wake sleeping rooms a few minutes before people usually join them
+	PredictiveWake bool `json:"predictive_wake"`
+
 	// show the title of the open page on room cards
 	NowPlaying bool `json:"now_playing"`
 }
@@ -36,6 +39,7 @@ func DefaultIntegrations() Integrations {
 		NotifyWatching:   true,
 		NotifySchedule:   true,
 		AutoSleepMinutes: 30,
+		PredictiveWake:   true,
 		NowPlaying:       true,
 	}
 }

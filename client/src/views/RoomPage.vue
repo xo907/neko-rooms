@@ -50,6 +50,7 @@
               <span class="nr-pill-chip"><v-icon>{{ visibilityIcon }}</v-icon>{{ room.visibility }}</span>
               <span v-if="room.category" class="nr-pill-chip">{{ room.category }}</span>
               <span v-if="room.featured" class="nr-pill-chip"><v-icon>mdi-star-outline</v-icon>Featured</span>
+              <span v-if="room.owner_control" class="nr-pill-chip" title="Only the host and admins control the browser"><v-icon>mdi-lock-outline</v-icon>Host controls</span>
               <span v-if="room.hidden" class="nr-pill-chip is-danger">Hidden by moderator</span>
             </div>
             <div v-if="room.now_playing" class="nr-now-playing">

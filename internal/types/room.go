@@ -191,6 +191,8 @@ type RoomManager interface {
 	GetWindowTitle(ctx context.Context, id string) (string, error)
 	UpdateImage(ctx context.Context, image string) (bool, error)
 	EnsureImage(ctx context.Context, image string) error
+	// NekoPost sends a request to a room's neko http api
+	NekoPost(ctx context.Context, id string, path string, body []byte) ([]byte, error)
 	OpenURL(ctx context.Context, id string, url string) error
 	Remove(ctx context.Context, id string) error
 

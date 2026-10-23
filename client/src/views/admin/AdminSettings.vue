@@ -85,6 +85,15 @@
               class="mt-6"
               hide-details
             />
+            <v-switch
+              v-if="sleepEnabled"
+              v-model="integrations.predictive_wake"
+              inset
+              dense
+              label="Wake rooms before people usually come"
+              hint="Learns when each room is used and wakes it a few minutes early, so joining is instant"
+              persistent-hint
+            />
           </v-card-text>
         </v-card>
 
