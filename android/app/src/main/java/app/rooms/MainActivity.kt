@@ -1,8 +1,12 @@
 package app.rooms
 
+import android.app.PictureInPictureParams
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -46,6 +50,35 @@ class MainActivity : ComponentActivity() {
                     App()
                 }
             }
+        }
+    }
+
+    // set while a room plays, leaving the app then shrinks it into a
+    // floating window instead of hiding it
+    var pipRatio: Rational? = null
+        set(value) {
+            field = value
+            updatePip()
+        }
+
+    private val pipSupported by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE) }
+
+    private fun pipParams(): PictureInPictureParams {
+        val b = PictureInPictureParams.Builder()
+        pipRatio?.let { b.setAspectRatio(it) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) b.setAutoEnterEnabled(pipRatio != null)
+        return b.build()
+    }
+
+    private fun updatePip() {
+        if (pipSupported) runCatching { setPictureInPictureParams(pipParams()) }
+    }
+
+    // Android 12 and later enter by themselves, see setAutoEnterEnabled
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (pipSupported && pipRatio != null && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            runCatching { enterPictureInPictureMode(pipParams()) }
         }
     }
 }

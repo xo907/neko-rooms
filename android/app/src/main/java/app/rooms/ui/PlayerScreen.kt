@@ -1,14 +1,20 @@
 package app.rooms.ui
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.SurfaceTexture
+import android.os.Build
+import android.util.Rational
 import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -124,9 +130,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.PictureInPictureModeChangedInfo
+import androidx.core.content.ContextCompat
+import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import app.rooms.MainActivity
+import app.rooms.PlaybackService
 import app.rooms.WatchPartyApp
 import app.rooms.data.Room
 import app.rooms.neko.Buttons
@@ -255,6 +268,69 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
         }
     }
 
+    // leaving for good, also from the notification or by closing the
+    // floating window while the app is out of sight
+    val leave by rememberUpdatedState {
+        client.stop()
+        live?.stop()
+        PlaybackService.stop(context)
+        onBack()
+    }
+    LaunchedEffect(Unit) { PlaybackService.leave.collect { leave() } }
+
+    // the room keeps playing in the background, its notification leads back
+    val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    DisposableEffect(Unit) { onDispose { PlaybackService.stop(context) } }
+
+    // leaving the app shrinks the video into a floating window
+    val main = activity as? MainActivity
+    var pip by remember { mutableStateOf(main?.isInPictureInPictureMode == true) }
+    LaunchedEffect(main, st.screenWidth, st.screenHeight) {
+        // the system refuses ratios beyond 2.39:1 either way
+        val r = (st.screenWidth.toFloat() / st.screenHeight.coerceAtLeast(1)).coerceIn(0.42f, 2.39f)
+        main?.pipRatio = Rational((r * 1000).toInt(), 1000)
+    }
+    DisposableEffect(main) {
+        val a = main ?: return@DisposableEffect onDispose {}
+        // expanding the window resumes the app, closing it stops the app,
+        // in either order with the mode change
+        var leftPip = false
+        val onPip = Consumer<PictureInPictureModeChangedInfo> { info ->
+            pip = info.isInPictureInPictureMode
+            if (!info.isInPictureInPictureMode) {
+                when (a.lifecycle.currentState) {
+                    Lifecycle.State.RESUMED -> {}
+                    Lifecycle.State.CREATED -> leave()
+                    else -> leftPip = true
+                }
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> leftPip = false
+                Lifecycle.Event.ON_STOP -> if (leftPip) {
+                    leftPip = false
+                    leave()
+                }
+                else -> {}
+            }
+        }
+        a.addOnPictureInPictureModeChangedListener(onPip)
+        a.lifecycle.addObserver(observer)
+        onDispose {
+            a.removeOnPictureInPictureModeChangedListener(onPip)
+            a.lifecycle.removeObserver(observer)
+            a.pipRatio = null
+        }
+    }
+
     // immersive while the video fills a landscape screen
     DisposableEffect(landscape) {
         val window = activity?.window
@@ -293,18 +369,15 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
         }
     }
 
-    // touching the browser without control takes it when nobody has it
+    // touching the browser without control only points at the button,
+    // control is taken with Take control alone
     var lastHint by remember { mutableLongStateOf(0L) }
     val notHost: () -> Unit = {
-        if (st.phase == Phase.Live && st.hostId == null) {
-            client.requestControl()
-        } else {
-            val now = System.currentTimeMillis()
-            if (now - lastHint > 4000) {
-                lastHint = now
-                val who = st.hostName ?: "Someone"
-                Toast.makeText(context, "$who has control. Tap Take control to ask for it", Toast.LENGTH_SHORT).show()
-            }
+        val now = System.currentTimeMillis()
+        if (st.phase == Phase.Live && now - lastHint > 4000) {
+            lastHint = now
+            val msg = st.hostName?.let { "$it has control. Tap Take control to ask for it" } ?: "Tap Take control to use the browser"
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
     }
     // a touch on the video puts away the chat keyboard
@@ -314,6 +387,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     }
 
     val title = room?.displayTitle ?: name
+    LaunchedEffect(title) { PlaybackService.start(context, title) }
     val photoOf = { n: String -> room?.avatars?.get(n)?.let { model.api.apiUrl(it) } }
     val bar = @Composable {
         ControlBar(
@@ -353,7 +427,11 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (landscape) {
+        if (pip) {
+            // only the picture fits in the floating window
+            Stage(st, client, touch, notHost, onStageTouch, joinError, waking, onBack, Modifier.fillMaxSize())
+            stageOverlays()
+        } else if (landscape) {
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     Stage(st, client, touch, notHost, onStageTouch, joinError, waking, onBack, Modifier.fillMaxSize())
@@ -444,7 +522,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
         }
 
         // hidden field that receives the on-screen keyboard
-        if (keyboard) RemoteKeyboard(client, ctrl) { ctrl = false }
+        if (keyboard && !pip) RemoteKeyboard(client, ctrl) { ctrl = false }
     }
 
     if (members) {
