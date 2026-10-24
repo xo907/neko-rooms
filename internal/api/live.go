@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -285,4 +286,40 @@ func (manager *ApiManagerCtx) adminIntegrationsTest(w http.ResponseWriter, r *ht
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+//
+// rewind
+//
+
+func (manager *ApiManagerCtx) rewindIndex(w http.ResponseWriter, r *http.Request) {
+	idx, err := manager.community.RewindIndex(chi.URLParam(r, "roomName"), liveTicket(r, ""))
+	if err != nil {
+		manager.liveError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, idx)
+}
+
+func (manager *ApiManagerCtx) rewindSegment(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(chi.URLParam(r, "n"))
+	if err != nil {
+		http.Error(w, "bad segment", http.StatusBadRequest)
+		return
+	}
+	f, seg, err := manager.community.RewindSegment(chi.URLParam(r, "roomName"), liveTicket(r, ""), n)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			http.Error(w, "gone", http.StatusNotFound)
+			return
+		}
+		manager.liveError(w, err)
+		return
+	}
+	defer f.Close()
+	// segments never change once they are listed
+	w.Header().Set("Content-Type", "video/webm")
+	w.Header().Set("Cache-Control", "private, max-age=3600, immutable")
+	http.ServeContent(w, r, strconv.Itoa(seg.N)+".webm", time.Time{}, f)
 }

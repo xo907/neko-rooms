@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/m1k1o/neko-rooms/internal/config"
 	"github.com/m1k1o/neko-rooms/internal/proxy"
 	"github.com/m1k1o/neko-rooms/internal/pull"
+	"github.com/m1k1o/neko-rooms/internal/rewind"
 	"github.com/m1k1o/neko-rooms/internal/room"
 	"github.com/m1k1o/neko-rooms/internal/server"
 	"github.com/m1k1o/neko-rooms/internal/store"
@@ -117,6 +119,7 @@ type MainCtx struct {
 	authManager      *auth.Manager
 	brandingManager  *branding.Manager
 	communityService *community.Service
+	rewindManager    *rewind.Manager
 	roomManager      types.RoomManager
 	pullManager      *pull.PullManagerCtx
 	apiManager       *api.ApiManagerCtx
@@ -184,6 +187,12 @@ func (main *MainCtx) Start() {
 		main.store,
 		main.authManager,
 	)
+	if rw, err := rewind.New(main.roomManager, filepath.Join(main.Configs.Server.DataDir, "rewind")); err != nil {
+		main.logger.Err(err).Msg("rewind is off")
+	} else {
+		main.rewindManager = rw
+		main.communityService.SetRewind(rw)
+	}
 	main.communityService.Start()
 
 	main.apiManager = api.New(
@@ -227,6 +236,9 @@ func (main *MainCtx) Shutdown() {
 	main.logger.Err(err).Msg("pull manager shutdown")
 
 	main.communityService.Shutdown()
+	if main.rewindManager != nil {
+		main.rewindManager.Shutdown()
+	}
 	main.authManager.Shutdown()
 
 	err = main.roomManager.EventsLoopStop()

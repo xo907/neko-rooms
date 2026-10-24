@@ -143,6 +143,7 @@ export interface Integrations {
   auto_sleep_minutes: number
   predictive_wake: boolean
   now_playing: boolean
+  rewind_minutes: number
 }
 
 export interface Friend {
