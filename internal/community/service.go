@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/m1k1o/neko-rooms/internal/auth"
+	"github.com/m1k1o/neko-rooms/internal/captions"
 	"github.com/m1k1o/neko-rooms/internal/rewind"
 	"github.com/m1k1o/neko-rooms/internal/store"
 	"github.com/m1k1o/neko-rooms/internal/types"
@@ -65,6 +66,10 @@ type Service struct {
 	warm     warmup
 	live     *liveHub
 	rewind   *rewind.Manager
+	captions *captions.Manager
+
+	rewindMu    sync.Mutex
+	rewindRooms []rewind.Room // as of the last refresh
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -72,7 +77,7 @@ type Service struct {
 
 func New(rooms types.RoomManager, s *store.Store, a *auth.Manager) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{
+	svc := &Service{
 		logger: log.With().Str("module", "community").Logger(),
 		rooms:  rooms,
 		store:  s,
@@ -84,6 +89,8 @@ func New(rooms types.RoomManager, s *store.Store, a *auth.Manager) *Service {
 		ctx:    ctx,
 		cancel: cancel,
 	}
+	svc.captions = captions.New(svc.sendCaption)
+	return svc
 }
 
 // SetBrand tells the service the site name and accent color, for Discord posts.
@@ -113,6 +120,7 @@ func (s *Service) Start() {
 
 func (s *Service) Shutdown() {
 	s.cancel()
+	s.captions.Shutdown()
 }
 
 // refreshStats polls member counts of all running rooms in the background,

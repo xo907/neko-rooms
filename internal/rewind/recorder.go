@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -26,7 +27,8 @@ import (
 
 // The recorder joins a room like a viewer, under types.RewindRecorderName,
 // and writes the video and sound neko already encodes for everyone to the
-// buffer. Nothing is decoded or encoded again.
+// buffer. Nothing is decoded or encoded again. Without a buffer it only
+// listens: the sound goes to audio, for subtitles, and no video is sent.
 
 // errUnsupported means the room can not be recorded, e.g. an older neko
 // or a video codec other than VP8
@@ -36,12 +38,14 @@ func (e errUnsupported) Error() string { return "unsupported: " + e.reason }
 
 type recorder struct {
 	logger zerolog.Logger
-	host   string // room web address, host:port
-	pass   string // user password of the room
-	buf    *buffer
+	host   string            // room web address, host:port
+	pass   string            // user password of the room
+	buf    *buffer           // nil: sound only
+	audio  func(data []byte) // each Opus packet, may be nil
 
-	wsMu sync.Mutex
-	ws   *websocket.Conn
+	alive atomic.Int64 // unix ms of the last frame
+	wsMu  sync.Mutex
+	ws    *websocket.Conn
 }
 
 type wsMessage struct {
@@ -239,12 +243,22 @@ func (r *recorder) run(ctx context.Context) error {
 	}()
 
 	// nothing arrives: the room can not be reached over webrtc from here
-	watchdog := time.AfterFunc(30*time.Second, func() {
-		cancel(errors.New("no video from the room"))
-	})
-	defer watchdog.Stop()
-	r.buf.onVideo(func() { watchdog.Reset(30 * time.Second) })
-	defer r.buf.onVideo(nil)
+	r.alive.Store(time.Now().UnixMilli())
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if time.Now().UnixMilli()-r.alive.Load() > 30000 {
+					cancel(errors.New("nothing arrives from the room"))
+					return
+				}
+			}
+		}
+	}()
 
 	for {
 		var msg wsMessage
@@ -257,7 +271,11 @@ func (r *recorder) run(ctx context.Context) error {
 
 		switch msg.Event {
 		case "system/init":
-			r.send("signal/request", map[string]any{"video": map[string]any{}, "audio": map[string]any{}})
+			video := map[string]any{}
+			if r.buf == nil {
+				video["disabled"] = true
+			}
+			r.send("signal/request", map[string]any{"video": video, "audio": map[string]any{}})
 		case "signal/provide", "signal/offer", "signal/restart":
 			var p struct {
 				SDP string `json:"sdp"`
@@ -299,6 +317,9 @@ func (r *recorder) track(ctx context.Context, pc *webrtc.PeerConnection, t *webr
 	video := false
 	switch mime {
 	case strings.ToLower(webrtc.MimeTypeVP8):
+		if r.buf == nil {
+			return nil // sound only
+		}
 		video = true
 		sb = samplebuilder.New(128, &codecs.VP8Packet{}, t.Codec().ClockRate)
 		// a keyframe right away instead of within the next second
@@ -323,6 +344,13 @@ func (r *recorder) track(ctx context.Context, pc *webrtc.PeerConnection, t *webr
 		}
 		sb.Push(pkt)
 		for s := sb.Pop(); s != nil; s = sb.Pop() {
+			r.alive.Store(time.Now().UnixMilli())
+			if !video && r.audio != nil {
+				r.audio(s.Data)
+			}
+			if r.buf == nil {
+				continue
+			}
 			ts := c.at(s.PacketTimestamp, r.buf.now())
 			if err := r.buf.write(frame{video: video, ts: ts, data: s.Data}); err != nil {
 				return err

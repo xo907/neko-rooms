@@ -1,0 +1,23 @@
+# Subtitles in other languages: a local LibreTranslate server next to the
+# site. Added by ./local/up.sh --translate (with --subtitles). Its language
+# models download on first start, about 100 MB per language; pick them with
+# NEKO_TRANSLATE_LANGS in .env.local.
+
+services:
+  neko-rooms:
+    environment:
+      - "NEKO_ROOMS_TRANSLATE_URL=http://neko-rooms-translate:5000"
+
+  translate:
+    image: "libretranslate/libretranslate:latest"
+    container_name: "neko-rooms-translate"
+    restart: "unless-stopped"
+    environment:
+      - "LT_LOAD_ONLY=${NEKO_TRANSLATE_LANGS:-en,es,fr,de,it,pt,ja,zh,ru}"
+      - "LT_UPDATE_MODELS=false"
+    volumes:
+      - "neko-rooms-translate-models:/home/libretranslate/.local"
+
+volumes:
+  neko-rooms-translate-models:
+    name: "neko-rooms-translate-models"

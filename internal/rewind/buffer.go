@@ -31,7 +31,6 @@ type buffer struct {
 	next  int
 	segs  []Segment
 	cur   *segWriter
-	video func() // called for each video frame
 }
 
 type segWriter struct {
@@ -66,9 +65,6 @@ func (b *buffer) write(f frame) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if f.video && b.video != nil {
-		b.video()
-	}
 	if f.video {
 		key, width, height := vp8Key(f.data)
 		f.key = key
@@ -170,13 +166,6 @@ func (b *buffer) dropLocked() {
 		os.Remove(c.f.Name())
 		b.cur = nil
 	}
-}
-
-// onVideo sets what is called for each video frame, nil for nothing
-func (b *buffer) onVideo(f func()) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.video = f
 }
 
 // cut closes the current segment, when recording stops

@@ -1,5 +1,5 @@
-// Room extras: raised hands, rewind and what is playing, plus reactions
-// shared with the app. Injected into neko room pages, talks to the
+// Room extras: raised hands, rewind, subtitles and what is playing, plus
+// reactions shared with the app. Injected into neko room pages, talks to the
 // live channel of the room with the ticket that came with the join link.
 //
 // Nothing sits on the video: what is playing is in the middle of the top
@@ -150,10 +150,12 @@
         hands = ev.hands || [];
         playing = ev.playing || '';
         render();
+        ccJoin();
         break;
       case 'hands': hands = ev.hands || []; renderHands(); break;
       case 'playing': playing = ev.title || ''; renderPlaying(); break;
       case 'reaction': if (ev.via !== 'neko') react(ev.emoji, ev.name); break;
+      case 'caption': if (ev.lang === cc.lang) caption(ev.text); break;
     }
   }
 
@@ -200,6 +202,12 @@
     '@keyframes nrx-up{0%{transform:translate(0,0) scale(.6);opacity:0}10%{opacity:1;transform:translate(0,-20px) scale(1.1)}100%{transform:translate(var(--dx),-300px) scale(1);opacity:0}}' +
     '.nrx-toast{position:fixed;left:50%;bottom:140px;z-index:1001;transform:translateX(-50%);padding:8px 14px;border-radius:99px;background:rgba(14,14,17,.92);box-shadow:inset 0 0 0 1px var(--l);white-space:nowrap;max-width:80%;overflow:hidden;text-overflow:ellipsis;animation:nrx-fade 3.5s forwards}' +
     '@keyframes nrx-fade{0%,85%{opacity:1}100%{opacity:0}}' +
+    '.nrx-cc{position:absolute;left:50%;bottom:7%;z-index:35;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;width:max-content;max-width:min(860px,86%);pointer-events:none;text-align:center}' +
+    '.nrx-cc span{padding:3px 10px;border-radius:6px;background:rgba(0,0,0,.78);color:#fff;font:500 clamp(14px,2.1vw,24px)/1.35 var(--nr-font,system-ui,sans-serif);text-shadow:0 1px 2px #000}' +
+    '.nrx-menu{position:fixed;z-index:1002;display:flex;flex-direction:column;min-width:170px;max-height:min(360px,60vh);overflow:auto;padding:5px;border-radius:12px;background:rgba(14,14,17,.96);backdrop-filter:blur(12px);box-shadow:inset 0 0 0 1px var(--l),0 12px 32px rgba(0,0,0,.5)}' +
+    '.nrx-menu button{padding:8px 12px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}' +
+    '.nrx-menu button:hover{background:rgba(255,255,255,.08)}.nrx-menu button.on{color:var(--a)}' +
+    '.nrx-cc-mark{display:inline-block;padding:0 3px;border:1.5px solid currentColor;border-radius:3px;font:700 10px/1.3 system-ui,sans-serif}' +
     '.nrx-rw{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:#000}' +
     '.nrx-rw video{width:100%;height:100%;object-fit:contain;background:#000}' +
     '.nrx-rw-top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:center;pointer-events:none}' +
@@ -236,8 +244,14 @@
     ui.rewind.innerHTML = '<span>⏪</span><span class="l">Rewind</span>';
     ui.rewind.style.display = 'none';
     ui.rewind.onclick = openRewind;
+
+    ui.cc = el('button', 'nrx-btn');
+    ui.cc.innerHTML = '<span class="nrx-cc-mark">CC</span><span class="l">Subtitles</span>';
+    ui.cc.style.display = 'none';
+    ui.cc.onclick = function (e) { e.stopPropagation(); ccMenu(); };
     ui.playing = el('div', 'nrx nrx-chip solo nrx-np');
 
+    ui.dock.appendChild(ui.cc);
     ui.dock.appendChild(ui.rewind);
     ui.dock.appendChild(ui.hand);
     ui.dock.appendChild(ui.hands);
@@ -591,6 +605,97 @@
       p.badge.textContent = '⏪ ' + clock(now - at) + ' behind';
     }
     p.play.textContent = v.paused ? '▶' : '❚❚';
+  }
+
+  //
+  // subtitles: what is said in the room, in the language each viewer picks
+  //
+
+  var CC_KEY = 'nr-captions';
+  var cc = { lang: '', langs: null, lines: [], menu: null };
+  try { cc.lang = localStorage.getItem(CC_KEY) || ''; } catch (e) { /* storage blocked */ }
+
+  function ccLanguages() {
+    return fetch(base + 'captions?t=' + encodeURIComponent(ticket), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { languages: [] }; })
+      .catch(function () { return { languages: [] }; })
+      .then(function (d) {
+        cc.langs = d.languages || [];
+        renderCC();
+        return cc.langs;
+      });
+  }
+
+  function ccName(code) {
+    var l = (cc.langs || []).filter(function (x) { return x.code === code; })[0];
+    return l ? l.name : code;
+  }
+
+  // ccJoin tells the server the language picked before, after every connect
+  function ccJoin() {
+    ccLanguages().then(function (langs) {
+      if (!cc.lang) return;
+      if (langs.some(function (l) { return l.code === cc.lang; })) post('captions', { lang: cc.lang }).catch(function () {});
+      else { cc.lang = ''; renderCC(); }
+    });
+  }
+
+  function ccSet(lang) {
+    cc.lang = lang;
+    try { localStorage.setItem(CC_KEY, lang); } catch (e) { /* storage blocked */ }
+    post('captions', { lang: lang }).catch(function (e) { toast(e.message); });
+    cc.lines = [];
+    renderCaption();
+    renderCC();
+    if (lang) toast('Subtitles: ' + ccName(lang) + ', they start with the next words');
+  }
+
+  function renderCC() {
+    if (!ui.cc) return;
+    ui.cc.style.display = cc.langs && cc.langs.length ? '' : 'none';
+    ui.cc.className = 'nrx-btn' + (cc.lang ? ' on' : '');
+    ui.cc.title = cc.lang ? 'Subtitles: ' + ccName(cc.lang) : 'Subtitles';
+  }
+
+  function ccMenu() {
+    if (cc.menu) { closeCCMenu(); return; }
+    var m = cc.menu = el('div', 'nrx nrx-menu');
+    var opts = [{ code: '', name: 'Off' }].concat(cc.langs || []);
+    opts.forEach(function (o) {
+      var b = el('button', o.code === cc.lang ? 'on' : '', o.name);
+      b.onclick = function () { closeCCMenu(); if (o.code !== cc.lang) ccSet(o.code); };
+      m.appendChild(b);
+    });
+    document.body.appendChild(m);
+    var r = ui.cc.getBoundingClientRect();
+    var h = m.offsetHeight, w = m.offsetWidth;
+    m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    m.style.top = (r.top - h - 8 > 8 ? r.top - h - 8 : r.bottom + 8) + 'px';
+    setTimeout(function () { document.addEventListener('click', closeCCMenu, { once: true }); }, 0);
+  }
+  function closeCCMenu() {
+    if (cc.menu) { cc.menu.remove(); cc.menu = null; }
+  }
+
+  // the last two lines, each shown for a few seconds
+  var CC_SHOW = 7000;
+  function caption(text) {
+    cc.lines.push({ text: text, at: Date.now() });
+    if (cc.lines.length > 2) cc.lines.shift();
+    renderCaption();
+    setTimeout(renderCaption, CC_SHOW + 50);
+  }
+  function renderCaption() {
+    if (!ui.video) return;
+    if (!ui.capt) {
+      ui.capt = el('div', 'nrx nrx-cc');
+      ui.video.appendChild(ui.capt);
+    }
+    var now = Date.now();
+    cc.lines = cc.lines.filter(function (l) { return now - l.at < CC_SHOW; });
+    ui.capt.innerHTML = '';
+    cc.lines.forEach(function (l) { ui.capt.appendChild(el('span', '', l.text)); });
+    ui.capt.style.display = cc.lang && cc.lines.length ? '' : 'none';
   }
 
   function toast(text) {

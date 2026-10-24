@@ -58,3 +58,12 @@ For people in a room, with the room ticket from the join address (`nrt`) as `?t=
 | `GET /api/public/live/{name}/rewind/{n}` | segment `n`, a WebM (VP8, Opus) with timestamps on the recording timeline, about 5 seconds long |
 
 Segments are made to be appended one after another to a `MediaSource` source buffer in `segments` mode.
+
+### Subtitles
+
+| | |
+|---|---|
+| `GET /api/public/live/{name}/captions?t=` | the languages viewers can pick, `orig` is the language spoken; empty when subtitles are off |
+| `POST /api/public/live/{name}/captions` | `{"t": ticket, "lang": "es"}` picks a language, `""` turns them off |
+
+Lines arrive on the live channel (`GET /api/public/live/{name}/events`) as `{"type": "caption", "lang": "es", "text": "…"}`, only in the language picked. Pick again after reconnecting.

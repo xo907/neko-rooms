@@ -150,7 +150,14 @@ type liveEvent struct {
 	ID      string       `json:"id,omitempty"`
 	Item    *QueueItem   `json:"item,omitempty"`
 	Playing *string      `json:"playing,omitempty"`
-	Via     string       `json:"via,omitempty"` // where a reaction was sent from
+	Via     string       `json:"via,omitempty"`  // where a reaction was sent from
+	Lang    string       `json:"lang,omitempty"` // of a subtitle line
+	Text    string       `json:"text,omitempty"`
+}
+
+func mustJSON(v any) []byte {
+	data, _ := json.Marshal(v)
+	return data
 }
 
 type liveSub struct {
@@ -164,6 +171,8 @@ type liveRoom struct {
 	hands  []Hand
 	nextID int
 	sent   map[string][]time.Time // reactions per ticket, for rate limits
+	// subtitle language per ticket
+	captions map[string]string
 }
 
 type liveHub struct {
@@ -179,7 +188,7 @@ func newLiveHub() *liveHub {
 func (h *liveHub) room(name string) *liveRoom {
 	r, ok := h.rooms[name]
 	if !ok {
-		r = &liveRoom{subs: map[*liveSub]struct{}{}, sent: map[string][]time.Time{}}
+		r = &liveRoom{subs: map[*liveSub]struct{}{}, sent: map[string][]time.Time{}, captions: map[string]string{}}
 		h.rooms[name] = r
 	}
 	return r
@@ -306,6 +315,10 @@ func (s *Service) Subscribe(v *LiveViewer) (<-chan []byte, func()) {
 			if other.id == sub.id {
 				return
 			}
+		}
+		if _, ok := r.captions[sub.id]; ok {
+			delete(r.captions, sub.id)
+			s.captions.Want(room, r.captionLangs())
 		}
 		for i, h := range r.hands {
 			if h.ID == sub.id {

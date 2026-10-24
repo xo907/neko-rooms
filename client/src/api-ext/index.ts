@@ -144,6 +144,10 @@ export interface Integrations {
   predictive_wake: boolean
   now_playing: boolean
   rewind_minutes: number
+  captions_url: string
+  captions_model: string
+  translate_url: string
+  translate_key: string
 }
 
 export interface Friend {
@@ -409,6 +413,8 @@ export const api = {
   integrations: () => http.get<Integrations>('/admin/integrations').then(r => r.data),
   updateIntegrations: (i: Integrations) => http.put<Integrations>('/admin/integrations', i).then(r => r.data),
   testIntegrations: (i: Integrations) => http.post('/admin/integrations/test', i),
+  testCaptions: (i: Integrations, lang: string) =>
+    http.post<{ text: string, translated: string }>('/admin/integrations/captions-test', { ...i, lang }).then(r => r.data),
   updatePolicy: (p: Policy) => http.put<Policy>('/admin/policy', p).then(r => r.data),
   brandingDefaults: () => http.get<Branding>('/admin/branding/defaults').then(r => r.data),
   updateBranding: (b: Branding) => http.put<Branding>('/admin/branding', b).then(r => r.data),
