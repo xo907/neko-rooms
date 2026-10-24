@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/m1k1o/neko-rooms/internal/store"
@@ -34,6 +35,13 @@ type Integrations struct {
 
 	// minutes of rooms people watch kept for rewinding, 0 = off
 	RewindMinutes int `json:"rewind_minutes"`
+
+	// subtitles: a speech to text server with the OpenAI transcription API,
+	// e.g. whisper.cpp, and optionally a LibreTranslate server
+	CaptionsURL   string `json:"captions_url"`
+	CaptionsModel string `json:"captions_model"`
+	TranslateURL  string `json:"translate_url"`
+	TranslateKey  string `json:"translate_key"`
 }
 
 func DefaultIntegrations() Integrations {
@@ -45,6 +53,9 @@ func DefaultIntegrations() Integrations {
 		PredictiveWake:   true,
 		NowPlaying:       true,
 		RewindMinutes:    10,
+		// set up by ./local/up.sh --subtitles
+		CaptionsURL:  os.Getenv("NEKO_ROOMS_CAPTIONS_URL"),
+		TranslateURL: os.Getenv("NEKO_ROOMS_TRANSLATE_URL"),
 	}
 }
 
@@ -74,6 +85,19 @@ func (i *Integrations) Validate() error {
 	if i.AutoSleepMinutes > 0 && i.AutoSleepMinutes < 5 {
 		return fmt.Errorf("sleep timer must be at least 5 minutes")
 	}
+	for _, u := range []*string{&i.CaptionsURL, &i.TranslateURL} {
+		*u = strings.TrimSpace(*u)
+		if *u == "" {
+			continue
+		}
+		p, err := url.Parse(*u)
+		if err != nil || (p.Scheme != "http" && p.Scheme != "https") || p.Host == "" {
+			return fmt.Errorf("server addresses must be http(s) urls")
+		}
+	}
+	i.CaptionsModel = strings.TrimSpace(i.CaptionsModel)
+	i.TranslateKey = strings.TrimSpace(i.TranslateKey)
+
 	if i.RewindMinutes < 0 || i.RewindMinutes > 60 {
 		return fmt.Errorf("rewind must be between 0 and 60 minutes")
 	}
@@ -88,6 +112,7 @@ func (s *Service) loadIntegrations() {
 	s.intMu.Lock()
 	s.integrations = i
 	s.intMu.Unlock()
+	s.captions.Configure(s.captionsConfig(i))
 }
 
 func (s *Service) Integrations() Integrations {
@@ -106,6 +131,7 @@ func (s *Service) SetIntegrations(i Integrations) error {
 	s.intMu.Lock()
 	s.integrations = i
 	s.intMu.Unlock()
+	s.captions.Configure(s.captionsConfig(i))
 	return nil
 }
 

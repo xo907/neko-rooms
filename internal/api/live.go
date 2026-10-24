@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/m1k1o/neko-rooms/internal/auth"
+	"github.com/m1k1o/neko-rooms/internal/captions"
 	"github.com/m1k1o/neko-rooms/internal/community"
 	"github.com/m1k1o/neko-rooms/internal/store"
 )
@@ -31,6 +32,7 @@ type liveRequest struct {
 	Target string `json:"target"`
 	URL    string `json:"url"`
 	Title  string `json:"title"`
+	Lang   string `json:"lang"`
 }
 
 func liveTicket(r *http.Request, body string) string {
@@ -121,6 +123,8 @@ func (manager *ApiManagerCtx) liveAction(w http.ResponseWriter, r *http.Request)
 		err = manager.community.QueuePlay(r.Context(), v, id)
 	case "remove":
 		err = manager.community.QueueRemove(v, id)
+	case "captions":
+		err = manager.community.SetCaptions(v, req.Lang)
 	default:
 		http.NotFound(w, r)
 		return
@@ -322,4 +326,37 @@ func (manager *ApiManagerCtx) rewindSegment(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "video/webm")
 	w.Header().Set("Cache-Control", "private, max-age=3600, immutable")
 	http.ServeContent(w, r, strconv.Itoa(seg.N)+".webm", time.Time{}, f)
+}
+
+//
+// subtitles
+//
+
+func (manager *ApiManagerCtx) captionLanguages(w http.ResponseWriter, r *http.Request) {
+	langs, err := manager.community.CaptionLanguages(r.Context(), chi.URLParam(r, "roomName"), liveTicket(r, ""))
+	if err != nil {
+		manager.liveError(w, err)
+		return
+	}
+	if langs == nil {
+		langs = []captions.Language{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"languages": langs})
+}
+
+func (manager *ApiManagerCtx) adminCaptionsTest(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		community.Integrations
+		Lang string `json:"lang"`
+	}
+	req.Integrations = manager.community.Integrations()
+	if !readJSON(w, r, &req) {
+		return
+	}
+	text, translated, err := manager.community.TestCaptions(r.Context(), req.Integrations, req.Lang)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"text": text, "translated": translated})
 }

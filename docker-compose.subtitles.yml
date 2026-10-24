@@ -1,0 +1,37 @@
+# Live subtitles: a local whisper.cpp speech to text server next to the site.
+# Added by ./local/up.sh --subtitles. The model is downloaded on first start
+# into a volume, pick it with NEKO_SUBTITLES_MODEL in .env.local:
+#
+#   tiny    75 MB  fastest, rough
+#   base   142 MB  default, fine on 4 cores
+#   small  466 MB  better, wants 8 cores or a GPU
+#
+# It only works while someone in a room has subtitles on.
+
+services:
+  neko-rooms:
+    environment:
+      - "NEKO_ROOMS_CAPTIONS_URL=http://neko-rooms-whisper:8080"
+
+  whisper:
+    image: "ghcr.io/ggml-org/whisper.cpp:main"
+    container_name: "neko-rooms-whisper"
+    restart: "unless-stopped"
+    environment:
+      - "WHISPER_MODEL=${NEKO_SUBTITLES_MODEL:-base}"
+      - "WHISPER_THREADS=${NEKO_SUBTITLES_THREADS:-4}"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        f="/models/ggml-$${WHISPER_MODEL}.bin"
+        [ -s "$$f" ] || /app/models/download-ggml-model.sh "$${WHISPER_MODEL}" /models
+        exec whisper-server -m "$$f" --host 0.0.0.0 --port 8080 -t "$${WHISPER_THREADS}" \
+          -l auto --convert --suppress-nst --no-language-probabilities \
+          --inference-path /v1/audio/transcriptions
+    volumes:
+      - "neko-rooms-whisper-models:/models"
+
+volumes:
+  neko-rooms-whisper-models:
+    name: "neko-rooms-whisper-models"

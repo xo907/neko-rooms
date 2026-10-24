@@ -82,6 +82,7 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 
 	r.Get("/public/live/{roomName}/events", manager.liveEvents)
 	r.Get("/public/live/{roomName}/rewind", manager.rewindIndex)
+	r.Get("/public/live/{roomName}/captions", manager.captionLanguages)
 	r.Get("/public/live/{roomName}/rewind/{n}", manager.rewindSegment)
 	r.Post("/public/live/{roomName}/{action}", manager.liveAction)
 	r.Post("/public/live/{roomName}/queue/{itemId}/{action}", manager.liveAction)
@@ -204,6 +205,7 @@ func (manager *ApiManagerCtx) Mount(r chi.Router) {
 			r.Get("/integrations", manager.adminIntegrationsGet)
 			r.Put("/integrations", manager.adminIntegrationsSet)
 			r.Post("/integrations/test", manager.adminIntegrationsTest)
+			r.Post("/integrations/captions-test", manager.adminCaptionsTest)
 
 			r.Get("/branding/defaults", manager.brandingDefaults)
 			r.Put("/branding", manager.adminBrandingSet)

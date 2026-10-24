@@ -37,6 +37,7 @@ type Room struct {
 	ID      string
 	Ready   bool
 	Viewers int
+	Audio   bool // someone needs the sound, for subtitles
 }
 
 // Index describes what can be played back for a room.
@@ -52,6 +53,7 @@ type entry struct {
 	id          string
 	buf         *buffer
 	cancel      context.CancelFunc
+	video       bool // the running recorder keeps video for rewinding
 	lastViewers time.Time
 	failures    int
 	retryAt     time.Time
@@ -61,6 +63,8 @@ type Manager struct {
 	logger zerolog.Logger
 	rooms  types.RoomManager
 	dir    string
+
+	audio func(room string, data []byte)
 
 	mu      sync.Mutex
 	keep    time.Duration
@@ -84,8 +88,13 @@ func New(rooms types.RoomManager, dir string) (*Manager, error) {
 	}, nil
 }
 
+// OnAudio sets where the sound of rooms goes, before the first Sync.
+func (m *Manager) OnAudio(f func(room string, data []byte)) {
+	m.audio = f
+}
+
 // Sync starts and stops recorders for the rooms, keep is how much to keep, 0
-// turns rewinding off.
+// turns rewinding off. Rooms that need their sound are listened to anyway.
 func (m *Manager) Sync(rooms []Room, keep time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -97,7 +106,7 @@ func (m *Manager) Sync(rooms []Room, keep time.Duration) {
 
 	seen := map[string]bool{}
 	for _, r := range rooms {
-		if !r.Ready || keep <= 0 {
+		if !r.Ready || (keep <= 0 && !r.Audio) {
 			continue
 		}
 		seen[r.Name] = true
@@ -119,13 +128,16 @@ func (m *Manager) Sync(rooms []Room, keep time.Duration) {
 			e.buf.prune(keep)
 		}
 
+		video := keep > 0
 		want := !e.lastViewers.IsZero() && now.Sub(e.lastViewers) < idleStop
-		switch {
-		case want && e.cancel == nil && !now.Before(e.retryAt):
-			m.startLocked(r.Name, e)
-		case !want && e.cancel != nil:
+		if e.cancel != nil && (!want || e.video != video) {
+			// stopped, or started over with or without video
 			e.cancel()
 			e.cancel = nil
+			e.retryAt = time.Time{}
+		}
+		if want && e.cancel == nil && !now.Before(e.retryAt) {
+			m.startLocked(r.Name, e, video)
 		}
 	}
 
@@ -136,8 +148,8 @@ func (m *Manager) Sync(rooms []Room, keep time.Duration) {
 	}
 }
 
-func (m *Manager) startLocked(name string, e *entry) {
-	if e.buf == nil {
+func (m *Manager) startLocked(name string, e *entry, video bool) {
+	if video && e.buf == nil {
 		dir, err := os.MkdirTemp(m.dir, "room-")
 		if err == nil {
 			e.buf, err = newBuffer(dir)
@@ -151,20 +163,27 @@ func (m *Manager) startLocked(name string, e *entry) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
-	buf := e.buf
+	e.video = video
+	var buf *buffer
+	if video {
+		buf = e.buf
+	}
+	var audio func([]byte)
+	if m.audio != nil {
+		audio = func(data []byte) { m.audio(name, data) }
+	}
 	logger := m.logger.With().Str("room", name).Logger()
 
 	go func() {
 		started := time.Now()
-		err := m.record(ctx, e.id, buf, logger)
-		buf.cut()
+		err := m.record(ctx, e.id, buf, audio, logger)
+		if buf != nil {
+			buf.cut()
+		}
 
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		if m.entries[name] != e {
-			return
-		}
-		if ctx.Err() != nil {
+		if m.entries[name] != e || ctx.Err() != nil {
 			return // stopped on purpose
 		}
 		cancel()
@@ -189,7 +208,7 @@ func (m *Manager) startLocked(name string, e *entry) {
 	}()
 }
 
-func (m *Manager) record(ctx context.Context, id string, buf *buffer, logger zerolog.Logger) error {
+func (m *Manager) record(ctx context.Context, id string, buf *buffer, audio func([]byte), logger zerolog.Logger) error {
 	entry, err := m.rooms.GetEntry(ctx, id)
 	if err != nil {
 		return err
@@ -206,8 +225,8 @@ func (m *Manager) record(ctx context.Context, id string, buf *buffer, logger zer
 		return errUnsupported{"room is not reachable"}
 	}
 
-	logger.Info().Msg("rewind recorder started")
-	r := &recorder{logger: logger, host: host, pass: settings.UserPass, buf: buf}
+	logger.Info().Bool("video", buf != nil).Msg("rewind recorder started")
+	r := &recorder{logger: logger, host: host, pass: settings.UserPass, buf: buf, audio: audio}
 	return r.run(ctx)
 }
 

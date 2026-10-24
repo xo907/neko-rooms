@@ -111,6 +111,65 @@
         </v-card>
 
         <v-card v-if="integrations" class="mb-6">
+          <v-card-title class="subtitle-1 font-weight-bold"><v-icon left small>mdi-closed-caption-outline</v-icon>Subtitles</v-card-title>
+          <v-card-text>
+            <p class="caption text--secondary mt-0">
+              Live subtitles of what is said in rooms, in the language each viewer picks. Speech is turned into text on your own speech server, only while someone has subtitles on.
+              <code>./local/up.sh --subtitles</code> sets one up next to the site.
+            </p>
+            <v-text-field
+              v-model="integrations.captions_url"
+              label="Speech to text server"
+              placeholder="http://neko-rooms-whisper:8080"
+              hint="whisper.cpp, or any server with the OpenAI transcription API. Empty turns subtitles off."
+              persistent-hint
+              outlined
+              dense
+              clearable
+            />
+            <v-text-field
+              v-if="integrations.captions_url"
+              v-model="integrations.captions_model"
+              label="Model"
+              placeholder="whisper-1"
+              hint="Only for servers that host several models, whisper.cpp uses the one it was started with"
+              persistent-hint
+              outlined
+              dense
+              class="mt-4"
+            />
+            <v-text-field
+              v-if="integrations.captions_url"
+              v-model="integrations.translate_url"
+              label="Translation server"
+              placeholder="http://neko-rooms-translate:5000"
+              hint="LibreTranslate, for subtitles in other languages. Without one, viewers get the original language and English."
+              persistent-hint
+              outlined
+              dense
+              clearable
+              class="mt-4"
+            />
+            <v-text-field
+              v-if="integrations.captions_url && integrations.translate_url"
+              v-model="integrations.translate_key"
+              label="Translation API key"
+              hint="Only if the translation server asks for one"
+              persistent-hint
+              outlined
+              dense
+              class="mt-4"
+            />
+            <div class="mt-5 d-flex align-center flex-wrap" style="gap: 12px">
+              <v-btn small outlined :disabled="!integrations.captions_url" :loading="captionsTesting" @click="testCaptions">
+                <v-icon left small>mdi-microphone-outline</v-icon>Test with a spoken sample
+              </v-btn>
+              <span v-if="captionsResult" class="body-2">{{ captionsResult }}</span>
+            </div>
+          </v-card-text>
+        </v-card>
+
+        <v-card v-if="integrations" class="mb-6">
           <v-card-title class="subtitle-1 font-weight-bold"><v-icon left small>mdi-bell-ring-outline</v-icon>Discord</v-card-title>
           <v-card-text>
             <p class="caption text--secondary mt-0">
@@ -165,6 +224,8 @@ export default class AdminSettings extends Vue {
   originalIntegrations = ''
   saving = false
   testing = false
+  captionsTesting = false
+  captionsResult = ''
 
   get dirty() {
     return (this.policy !== null && JSON.stringify(this.policy) !== this.original) ||
@@ -196,7 +257,21 @@ export default class AdminSettings extends Vue {
   integrationsPayload(): Integrations {
     const i = this.integrations as Integrations
     // eslint-disable-next-line
-    return { ...i, public_url: i.public_url || '', discord_webhook: i.discord_webhook || '', auto_sleep_minutes: Number(i.auto_sleep_minutes) || 0, rewind_minutes: Number(i.rewind_minutes) || 0 }
+    return { ...i, public_url: i.public_url || '', discord_webhook: i.discord_webhook || '', auto_sleep_minutes: Number(i.auto_sleep_minutes) || 0, rewind_minutes: Number(i.rewind_minutes) || 0, captions_url: i.captions_url || '', translate_url: i.translate_url || '' }
+  }
+
+  async testCaptions() {
+    if (!this.integrations) return
+    this.captionsTesting = true
+    this.captionsResult = ''
+    try {
+      const r = await api.testCaptions(this.integrationsPayload(), this.integrations.translate_url ? 'es' : '')
+      this.captionsResult = r.text ? `Heard: “${r.text}”` + (r.translated ? ` · Spanish: “${r.translated}”` : '') : 'The server answered, but heard nothing'
+    } catch (e) {
+      this.$swal({ icon: 'error', title: 'The speech server did not answer', text: errorMessage(e) })
+    } finally {
+      this.captionsTesting = false
+    }
   }
 
   async test() {

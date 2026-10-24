@@ -11,6 +11,7 @@ import (
 // SetRewind turns on rewinding, the recordings live in m.
 func (s *Service) SetRewind(m *rewind.Manager) {
 	s.rewind = m
+	m.OnAudio(s.captions.Audio)
 }
 
 // syncRewind records the rooms people watch, after every stats refresh
@@ -26,6 +27,24 @@ func (s *Service) syncRewind(entries []types.RoomEntry, stats map[string]roomSta
 			Ready:   e.Running && e.IsReady && !e.Paused,
 			Viewers: stats[e.ID].connections,
 		})
+	}
+	s.rewindMu.Lock()
+	s.rewindRooms = rooms
+	s.rewindMu.Unlock()
+	s.resyncRewind()
+}
+
+// resyncRewind applies the last refresh again, e.g. when someone turned on
+// subtitles and the room has to be listened to right away
+func (s *Service) resyncRewind() {
+	if s.rewind == nil {
+		return
+	}
+	s.rewindMu.Lock()
+	rooms := append([]rewind.Room(nil), s.rewindRooms...)
+	s.rewindMu.Unlock()
+	for i := range rooms {
+		rooms[i].Audio = s.captions.Wanted(rooms[i].Name)
 	}
 	s.rewind.Sync(rooms, time.Duration(s.Integrations().RewindMinutes)*time.Minute)
 }

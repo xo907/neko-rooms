@@ -110,6 +110,38 @@ If NPM runs on the default docker bridge or the host network, the script prints
 an IP to forward to instead of `neko-rooms-local`. If it can not find NPM, set
 its container name: `echo NPM_CONTAINER=<name> >> .env.local`.
 
+## Subtitles
+
+Live subtitles of what is said in rooms, in the language each viewer picks
+with **CC** in the room:
+
+```bash
+./local/up.sh --subtitles   # speech to text, original language and English
+./local/up.sh --translate   # also other languages
+```
+
+`--subtitles` starts a [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
+speech server next to the site, `--translate` a
+[LibreTranslate](https://libretranslate.com) server too. Both run on this
+machine, nothing leaves it, and both are remembered for the next run
+(`--no-subtitles`, `--no-translate` to remove them).
+
+- They only work while someone in a room has subtitles on, and pieces without
+  speech are skipped. Lines show up a few seconds after they are said.
+- The speech model downloads on first start. Pick it in `.env.local`:
+  `NEKO_SUBTITLES_MODEL=tiny` (75 MB, fastest), `base` (142 MB, the default)
+  or `small` (466 MB, better, wants 8 cores). `NEKO_SUBTITLES_THREADS` sets the
+  CPU threads, 4 by default.
+- Translation languages: `NEKO_TRANSLATE_LANGS=en,es,fr,de` (about 100 MB per
+  language, downloaded on first start).
+- Disk: the speech server image is about 1.7 GB, the translation one about 1 GB.
+- x86 only: there is no ARM build of the speech server, so not on a Raspberry
+  Pi (it would be too slow there anyway).
+
+Any speech server with the OpenAI transcription API works too, and any
+LibreTranslate: set their addresses in **Admin → Settings → Subtitles**, which
+also has a test with a spoken sample.
+
 ## Raspberry Pi
 
 One command on a 64-bit Raspberry Pi OS or Debian, Pi 4 or 5. Run it as a normal

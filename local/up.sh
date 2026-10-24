@@ -10,6 +10,10 @@
 #                            published image (remembered, --no-public to undo)
 #   ./local/up.sh --npm      behind Nginx Proxy Manager on this server, with your
 #                            domain and HTTPS (remembered, --no-npm to undo)
+#   ./local/up.sh --subtitles   live subtitles with a local speech server
+#                            (whisper.cpp, x86 only; remembered, --no-subtitles)
+#   ./local/up.sh --translate   subtitles in other languages too, with a local
+#                            LibreTranslate (remembered, --no-translate)
 #   ./local/up.sh down       stop (rooms keep running until stopped in the UI)
 #   ./local/up.sh logs       follow logs
 set -euo pipefail
@@ -33,6 +37,8 @@ build=1
 pi=""
 public=""
 npm=""
+subtitles=""
+translate=""
 for arg in "$@"; do
   case "$arg" in
     --pi) pi=1 ;;
@@ -41,9 +47,13 @@ for arg in "$@"; do
     --no-public) public=0 ;;
     --npm) npm=1 ;;
     --no-npm) npm=0 ;;
+    --subtitles) subtitles=1 ;;
+    --no-subtitles) subtitles=0 ;;
+    --translate) translate=1; subtitles=1 ;;
+    --no-translate) translate=0 ;;
     --no-build) build=0 ;;
     down|logs) action="$arg" ;;
-    *) echo "unknown argument: $arg" >&2; sed -n '4,14p' "$0" >&2; exit 1 ;;
+    *) echo "unknown argument: $arg" >&2; sed -n '4,18p' "$0" >&2; exit 1 ;;
   esac
 done
 
@@ -70,6 +80,26 @@ if [ -z "$public" ]; then
 elif [ "$action" = "up" ]; then
   setenv NEKO_PUBLIC "$public"
 fi
+# subtitles are remembered too
+if [ -z "$subtitles" ]; then
+  subtitles="$(saved NEKO_SUBTITLES)"
+  subtitles="${subtitles:-0}"
+elif [ "$action" = "up" ]; then
+  setenv NEKO_SUBTITLES "$subtitles"
+fi
+if [ -z "$translate" ]; then
+  translate="$(saved NEKO_TRANSLATE)"
+  translate="${translate:-0}"
+elif [ "$action" = "up" ]; then
+  setenv NEKO_TRANSLATE "$translate"
+fi
+[ "$subtitles" = 1 ] || translate=0
+if [ "$subtitles" = 1 ] && [ "$action" = "up" ] && [ "$(uname -m)" != "x86_64" ]; then
+  echo "! subtitles need an x86 machine, the speech server has no $(uname -m) build. Skipping them." >&2
+  subtitles=0
+  translate=0
+fi
+
 # behind the proxy the room video still goes straight to the public IP
 [ "$npm" = 1 ] && public=1
 
@@ -117,6 +147,8 @@ if [ "$npm" = 1 ]; then
   COMPOSE+=(-f docker-compose.npm.yml)
   [ -n "$(saved NPM_NETWORK)" ] && COMPOSE+=(-f docker-compose.npm-network.yml)
 fi
+[ "$subtitles" = 1 ] && COMPOSE+=(-f docker-compose.subtitles.yml)
+[ "$translate" = 1 ] && COMPOSE+=(-f docker-compose.translate.yml)
 COMPOSE+=(--env-file "$ENV_FILE")
 
 case "$action" in
@@ -250,6 +282,13 @@ if [ "$public" = 1 ] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null
   echo "ufw is active, for example:"
   [ "$npm" = 1 ] || echo "  ufw allow $port/tcp"
   echo "  ufw allow ${epr/-/:}/tcp && ufw allow ${epr/-/:}/udp"
+fi
+
+if [ "$subtitles" = 1 ]; then
+  echo
+  echo "Subtitles: the speech server downloads its model on first start"
+  [ "$translate" = 1 ] && echo "and the translation server its languages, a few minutes"
+  echo "(./local/up.sh logs). Then CC appears in rooms."
 fi
 
 # first start: show the one-time setup token
