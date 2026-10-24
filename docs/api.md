@@ -55,6 +55,7 @@ For people in a room, with the room ticket from the join address (`nrt`) as `?t=
 | | |
 |---|---|
 | `GET /api/public/live/{name}/rewind` | what can be played back: `segments` with `n`, `start` and `end` in ms on the recording timeline, `now` on that timeline, `epoch` its start in unix ms |
+| `GET /api/public/live/{name}/rewind/stream?from={n}` | the recording from segment `n` on as one WebM that keeps growing while the room records: time from zero, gaps closed (segments more than 1 s apart are joined end to start) |
 | `GET /api/public/live/{name}/rewind/{n}` | segment `n`, a WebM (VP8, Opus) with timestamps on the recording timeline, about 5 seconds long |
 
 Segments are made to be appended one after another to a `MediaSource` source buffer in `segments` mode.

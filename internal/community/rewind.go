@@ -1,6 +1,8 @@
 package community
 
 import (
+	"context"
+	"io"
 	"os"
 	"time"
 
@@ -62,6 +64,18 @@ func (s *Service) RewindIndex(room, ticket string) (rewind.Index, error) {
 		return rewind.Index{Segments: []rewind.Segment{}}, nil
 	}
 	return idx, nil
+}
+
+// RewindStream writes the recording of a room from segment n on as one
+// WebM, for someone in it.
+func (s *Service) RewindStream(ctx context.Context, room, ticket string, n int, w io.Writer, flush func()) error {
+	if _, err := s.ParseTicket(room, ticket); err != nil {
+		return err
+	}
+	if s.rewind == nil {
+		return os.ErrNotExist
+	}
+	return s.rewind.Stream(ctx, room, n, w, flush)
 }
 
 // RewindSegment opens a piece of the recording of a room, for someone in it.
