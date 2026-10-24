@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/m1k1o/neko-rooms/internal/auth"
+	"github.com/m1k1o/neko-rooms/internal/rewind"
 	"github.com/m1k1o/neko-rooms/internal/store"
 	"github.com/m1k1o/neko-rooms/internal/types"
 )
@@ -63,6 +64,7 @@ type Service struct {
 	activity activity
 	warm     warmup
 	live     *liveHub
+	rewind   *rewind.Manager
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -179,6 +181,7 @@ func (s *Service) refreshStats() {
 	s.statsMu.Unlock()
 
 	s.afterRefresh(entries, prev, next)
+	s.syncRewind(entries, next)
 }
 
 func (s *Service) getStats(id string) roomStats {

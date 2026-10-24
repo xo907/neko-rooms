@@ -173,6 +173,10 @@ type RoomEvent struct {
 
 var ErrRoomNotFound = fmt.Errorf("room not found")
 
+// RewindRecorderName is the name the rewind recorder joins rooms under. It
+// is not a viewer: it is left out of member lists and counts.
+const RewindRecorderName = "⏪ rewind"
+
 // ErrImagePulling is returned while the image of a room is being
 // downloaded, try again in a moment.
 var ErrImagePulling = fmt.Errorf("the room image is being downloaded, this takes a minute the first time")

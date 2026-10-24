@@ -29,6 +29,7 @@ This is a fork of [m1k1o/neko-rooms](https://github.com/m1k1o/neko-rooms), the r
 - Shared browser rooms on [n.eko](https://github.com/m1k1o/neko): video and sound for everyone, one person in control at a time, chat.
 - **Now playing**: room cards, previews and Discord posts show the page open in the room.
 - **Raise hand** to get control next, the person in control hands it over with a click.
+- **Rewind**: joined late or stepped away? Go back up to 10 minutes, then catch up at 1.5× or 2× until you are live again. The room keeps what everyone already receives, as is, only while people watch.
 - Reactions with neko's emotes, shared with the Android app.
 - **Watch parties**: give a room a start time, people RSVP and add it to their calendar, the homepage lists what is coming up, the room starts two minutes early.
 

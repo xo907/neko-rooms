@@ -94,6 +94,19 @@
               hint="Learns when each room is used and wakes it a few minutes early, so joining is instant"
               persistent-hint
             />
+            <v-switch v-model="rewindEnabled" inset dense label="Rewind" hint="People in a room can go back to see what they missed and catch up. Keeps the last minutes of rooms people watch, on disk, up to about 15 MB a minute per room." persistent-hint />
+            <v-text-field
+              v-if="rewindEnabled"
+              v-model.number="integrations.rewind_minutes"
+              type="number"
+              min="1"
+              max="60"
+              label="Minutes to keep"
+              outlined
+              dense
+              class="mt-6"
+              hide-details
+            />
           </v-card-text>
         </v-card>
 
@@ -167,6 +180,15 @@ export default class AdminSettings extends Vue {
     if (this.integrations) this.integrations.auto_sleep_minutes = on ? 30 : 0
   }
 
+  get rewindEnabled(): boolean {
+    return !!this.integrations && this.integrations.rewind_minutes > 0
+  }
+
+  set rewindEnabled(on: boolean) {
+    // eslint-disable-next-line
+    if (this.integrations) this.integrations.rewind_minutes = on ? 10 : 0
+  }
+
   get siteAddress(): string {
     return location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')
   }
@@ -174,7 +196,7 @@ export default class AdminSettings extends Vue {
   integrationsPayload(): Integrations {
     const i = this.integrations as Integrations
     // eslint-disable-next-line
-    return { ...i, public_url: i.public_url || '', discord_webhook: i.discord_webhook || '', auto_sleep_minutes: Number(i.auto_sleep_minutes) || 0 }
+    return { ...i, public_url: i.public_url || '', discord_webhook: i.discord_webhook || '', auto_sleep_minutes: Number(i.auto_sleep_minutes) || 0, rewind_minutes: Number(i.rewind_minutes) || 0 }
   }
 
   async test() {

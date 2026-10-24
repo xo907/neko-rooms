@@ -676,6 +676,9 @@ func nekoStats(ctx context.Context, apiVersion int, adminPass string, fetch neko
 		stats.Members = []*types.RoomMember{}
 
 		for _, session := range sessions {
+			if session.Profile.Name == types.RewindRecorderName {
+				continue
+			}
 			if session.State.IsConnected {
 				stats.Connections++
 				// append members

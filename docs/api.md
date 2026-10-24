@@ -47,3 +47,14 @@ These work without signing in, for what a visitor may see:
 | `POST /api/public/rooms/{name}/join` | the room address with credentials (`202 {"waking": true}` while a sleeping room starts) |
 | `GET /api/public/rooms/{name}/event.ics` | a watch party as a calendar event |
 | `GET /api/public/og/rooms/{name}.png` | the link preview image of a room |
+
+### Rewind
+
+For people in a room, with the room ticket from the join address (`nrt`) as `?t=`:
+
+| | |
+|---|---|
+| `GET /api/public/live/{name}/rewind` | what can be played back: `segments` with `n`, `start` and `end` in ms on the recording timeline, `now` on that timeline, `epoch` its start in unix ms |
+| `GET /api/public/live/{name}/rewind/{n}` | segment `n`, a WebM (VP8, Opus) with timestamps on the recording timeline, about 5 seconds long |
+
+Segments are made to be appended one after another to a `MediaSource` source buffer in `segments` mode.

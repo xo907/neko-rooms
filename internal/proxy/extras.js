@@ -1,5 +1,5 @@
-// Room extras: raised hands and what is playing, plus reactions shared with
-// the app. Injected into neko room pages, talks to the
+// Room extras: raised hands, rewind and what is playing, plus reactions
+// shared with the app. Injected into neko room pages, talks to the
 // live channel of the room with the ticket that came with the join link.
 //
 // Nothing sits on the video: what is playing is in the middle of the top
@@ -7,6 +7,43 @@
 // to the app, the ones sent from the app float up like neko's.
 (function () {
   var C = __NR_CONFIG__;
+
+  function vm() { var el = document.getElementById('neko'); return el && el.__vue__; }
+  function acc() { var v = vm(); return v && v.$accessor; }
+
+  // the rewind recorder is in the room like a viewer, nobody should see it:
+  // not in the member list, and no join message with the chat sound
+  (function hideRecorder() {
+    var hidden = {};
+    var tries = 0;
+    var timer = setInterval(function () {
+      var v = vm(), a = acc();
+      if (!v || !v.$store || !a || !a.chat) { if (++tries > 120) clearInterval(timer); return; }
+      clearInterval(timer);
+      function scrub() {
+        var st = v.$store.state, ms = st.user && st.user.members;
+        if (ms) {
+          for (var id in ms) {
+            if (ms[id] && ms[id].displayname === C.recorder) { hidden[id] = true; v.$delete(ms, id); }
+          }
+        }
+        var h = st.chat && st.chat.history;
+        if (h && h.some(function (m) { return hidden[m.id]; })) {
+          st.chat.history = h.filter(function (m) { return !hidden[m.id]; });
+        }
+      }
+      try {
+        var newMessage = a.chat.newMessage;
+        a.chat.newMessage = function (m) {
+          if (m && hidden[m.id]) return;
+          return newMessage.apply(this, arguments);
+        };
+      } catch (e) { /* read only, scrub takes it out afterwards */ }
+      v.$store.subscribe(scrub);
+      scrub();
+    }, 250);
+  })();
+
   var KEY = 'nr-ticket:' + C.room;
   var params = new URLSearchParams(location.search);
   var ticket = params.get('nrt');
@@ -24,8 +61,6 @@
   // neko client
   //
 
-  function vm() { var el = document.getElementById('neko'); return el && el.__vue__; }
-  function acc() { var v = vm(); return v && v.$accessor; }
   function myName() {
     try { var n = acc().user.member.displayname; if (n) return n; } catch (e) { /* not connected */ }
     return params.get('usr') || '';
@@ -165,6 +200,14 @@
     '@keyframes nrx-up{0%{transform:translate(0,0) scale(.6);opacity:0}10%{opacity:1;transform:translate(0,-20px) scale(1.1)}100%{transform:translate(var(--dx),-300px) scale(1);opacity:0}}' +
     '.nrx-toast{position:fixed;left:50%;bottom:140px;z-index:1001;transform:translateX(-50%);padding:8px 14px;border-radius:99px;background:rgba(14,14,17,.92);box-shadow:inset 0 0 0 1px var(--l);white-space:nowrap;max-width:80%;overflow:hidden;text-overflow:ellipsis;animation:nrx-fade 3.5s forwards}' +
     '@keyframes nrx-fade{0%,85%{opacity:1}100%{opacity:0}}' +
+    '.nrx-rw{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:#000}' +
+    '.nrx-rw video{width:100%;height:100%;object-fit:contain;background:#000}' +
+    '.nrx-rw-top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:center;pointer-events:none}' +
+    '.nrx-rw-badge{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:99px;background:rgba(14,14,17,.78);backdrop-filter:blur(12px);box-shadow:inset 0 0 0 1px var(--l);font-variant-numeric:tabular-nums}' +
+    '.nrx-rw-bar{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:6px;padding:5px;border-radius:99px;background:rgba(14,14,17,.78);backdrop-filter:blur(12px);box-shadow:inset 0 0 0 1px var(--l)}' +
+    '.nrx-rw-bar .nrx-btn{height:30px;min-width:30px;font-variant-numeric:tabular-nums}' +
+    '.nrx-rw-range{flex:1;min-width:60px;margin:0 6px;accent-color:var(--a)}' +
+    '@media (max-width:520px){.nrx-rw-bar .opt{display:none}}' +
     '@media (max-width:700px){.nrx-np{display:none!important}}' +
     '@media (max-width:760px){.nrx-btn span.l{display:none}.nrx-chip{max-width:150px}}';
 
@@ -188,8 +231,14 @@
     };
 
     ui.hands = el('div', 'nrx-chip');
+
+    ui.rewind = el('button', 'nrx-btn');
+    ui.rewind.innerHTML = '<span>⏪</span><span class="l">Rewind</span>';
+    ui.rewind.style.display = 'none';
+    ui.rewind.onclick = openRewind;
     ui.playing = el('div', 'nrx nrx-chip solo nrx-np');
 
+    ui.dock.appendChild(ui.rewind);
     ui.dock.appendChild(ui.hand);
     ui.dock.appendChild(ui.hands);
     ui.root.appendChild(ui.dock);
@@ -296,6 +345,254 @@
     setTimeout(function () { f.remove(); }, 3300);
   }
 
+  //
+  // rewind: the last minutes of the room, recorded on the server, played
+  // over the live room until you catch up
+  //
+
+  var RW_TYPE = 'video/webm; codecs="vp8, opus"';
+  var rw = { idx: null, at: 0, player: null };
+  rw.ok = !!(window.MediaSource && MediaSource.isTypeSupported && MediaSource.isTypeSupported(RW_TYPE));
+
+  function rwFetch() {
+    return fetch(base + 'rewind?t=' + encodeURIComponent(ticket), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (idx) {
+        if (idx) { rw.idx = idx; rw.at = Date.now(); }
+        renderRewind();
+      })
+      .catch(function () { /* try again later */ });
+  }
+  function rwSegs() { return (rw.idx && rw.idx.segments) || []; }
+  // ms on the recording timeline right now
+  function rwNow() { return rw.idx ? rw.idx.now + (Date.now() - rw.at) : 0; }
+  function rwFirst() { var s = rwSegs(); return s.length ? s[0].start : 0; }
+  function rwLast() { var s = rwSegs(); return s.length ? s[s.length - 1].end : 0; }
+  function rwAvailable() { return rw.ok && rwSegs().length > 0 && rwLast() - rwFirst() >= 15000; }
+  function rwSegFrom(n) {
+    var s = rwSegs();
+    for (var i = 0; i < s.length; i++) if (s[i].n >= n) return s[i];
+    return null;
+  }
+
+  function clock(ms) {
+    var s = Math.max(0, Math.round(ms / 1000)), m = Math.floor(s / 60);
+    s %= 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function renderRewind() {
+    if (!ui.rewind) return;
+    ui.rewind.style.display = rwAvailable() && !rw.player ? '' : 'none';
+    if (rwAvailable()) ui.rewind.title = 'See the last ' + clock(rwNow() - rwFirst()) + ' and catch up';
+  }
+
+  function openRewind() {
+    if (rw.player || !rwAvailable()) return;
+    var p = rw.player = { gen: 0, next: 0, loading: false, pending: null, target: null, sb: null, speeds: [1, 1.5, 2], speed: 0 };
+
+    p.box = el('div', 'nrx nrx-rw');
+    p.video = el('video');
+    p.video.playsInline = true;
+    p.box.appendChild(p.video);
+
+    var top = el('div', 'nrx-rw-top');
+    p.badge = el('span', 'nrx-rw-badge');
+    top.appendChild(p.badge);
+    p.box.appendChild(top);
+
+    var bar = el('div', 'nrx-rw-bar');
+    p.play = el('button', 'nrx-btn');
+    p.play.onclick = function () { if (p.video.paused) p.video.play().catch(function () {}); else p.video.pause(); };
+    var back = el('button', 'nrx-btn opt', '-10s');
+    back.onclick = function () { jump(-10); };
+    var fwd = el('button', 'nrx-btn opt', '+10s');
+    fwd.onclick = function () { jump(10); };
+    p.rate = el('button', 'nrx-btn', '1×');
+    p.rate.title = 'Speed, faster catches up';
+    p.rate.onclick = function () {
+      p.speed = (p.speed + 1) % p.speeds.length;
+      p.video.playbackRate = p.speeds[p.speed];
+      p.rate.textContent = p.speeds[p.speed] + '×';
+    };
+    p.range = el('input', 'nrx-rw-range');
+    p.range.type = 'range';
+    p.range.step = '0.5';
+    p.range.oninput = function () { p.dragging = true; p.badge.textContent = '⏪ ' + clock(rwNow() - p.range.value * 1000) + ' behind'; };
+    p.range.onchange = function () { p.dragging = false; to(Number(p.range.value)); };
+    var live = el('button', 'nrx-btn on', 'Live');
+    live.title = 'Back to the room';
+    live.onclick = function () { closeRewind(); };
+    [p.play, back, fwd, p.rate, p.range, live].forEach(function (b) { bar.appendChild(b); });
+    p.box.appendChild(bar);
+    ui.video.appendChild(p.box);
+
+    // the live room goes quiet meanwhile
+    p.muted = [];
+    document.querySelectorAll('#neko video').forEach(function (v) {
+      if (v !== p.video) { p.muted.push([v, v.muted]); v.muted = true; }
+    });
+    p.keys = function (e) { if (e.key === 'Escape') closeRewind(); };
+    document.addEventListener('keydown', p.keys);
+
+    var ms = new MediaSource();
+    p.video.src = URL.createObjectURL(ms);
+    ms.addEventListener('sourceopen', function () {
+      if (rw.player !== p) return;
+      try { p.sb = ms.addSourceBuffer(RW_TYPE); } catch (e) { closeRewind('Rewind does not work in this browser'); return; }
+      p.sb.mode = 'segments';
+      p.sb.addEventListener('updateend', pump);
+      // a couple of minutes back to start with
+      seek(Math.max(rwFirst(), rwNow() - 120000));
+    }, { once: true });
+
+    p.timer = setInterval(tick, 500);
+    p.refresh = setInterval(rwFetch, 5000);
+    renderRewind();
+    tick();
+  }
+
+  function closeRewind(msg) {
+    var p = rw.player;
+    if (!p) return;
+    rw.player = null;
+    p.gen++;
+    clearInterval(p.timer);
+    clearInterval(p.refresh);
+    document.removeEventListener('keydown', p.keys);
+    try { p.video.pause(); } catch (e) { /* gone */ }
+    p.video.removeAttribute('src');
+    try { p.video.load(); } catch (e) { /* gone */ }
+    p.box.remove();
+    p.muted.forEach(function (m) { m[0].muted = m[1]; });
+    renderRewind();
+    if (msg) toast(msg);
+  }
+
+  function inBuffer(t) {
+    var b = rw.player.sb && rw.player.sb.buffered;
+    if (!b) return false;
+    for (var i = 0; i < b.length; i++) if (t >= b.start(i) && t < b.end(i)) return true;
+    return false;
+  }
+
+  // to plays from second t of the timeline, from what is loaded if it can
+  function to(t) {
+    var p = rw.player;
+    if (!p) return;
+    if (inBuffer(t)) p.video.currentTime = t;
+    else seek(t * 1000);
+  }
+  function jump(sec) {
+    var p = rw.player;
+    if (p) to(Math.max(rwFirst() / 1000, p.video.currentTime + sec));
+  }
+
+  // seek starts loading over from the segment with time t (ms)
+  function seek(t) {
+    var p = rw.player;
+    if (!p || !p.sb) return;
+    var segs = rwSegs(), seg = null;
+    for (var i = 0; i < segs.length; i++) if (segs[i].end > t) { seg = segs[i]; break; }
+    if (!seg) { closeRewind('You are caught up'); return; }
+    p.gen++;
+    p.next = seg.n;
+    p.target = Math.max(t, seg.start) / 1000;
+    p.loading = false;
+    p.pending = null;
+    try { p.sb.abort(); } catch (e) { /* not open yet */ }
+    if (p.sb.buffered.length) {
+      try { p.sb.remove(0, Infinity); return; } catch (e) { /* nothing to remove */ }
+    }
+    pump();
+  }
+
+  // pump keeps about 20 seconds loaded ahead and lets go of what was watched
+  function pump() {
+    var p = rw.player;
+    if (!p || !p.sb || p.sb.updating) return;
+    if (p.pending) {
+      var data = p.pending;
+      p.pending = null;
+      try { p.sb.appendBuffer(data); } catch (e) { seek(p.video.currentTime * 1000); }
+      return;
+    }
+    var v = p.video, b = p.sb.buffered;
+
+    // after a seek, play from there once it is loaded
+    if (p.target != null && b.length) {
+      for (var i = 0; i < b.length; i++) {
+        if (b.end(i) > p.target) {
+          v.currentTime = Math.max(p.target, b.start(i));
+          p.target = null;
+          v.play().catch(function () { /* paused until a tap */ });
+          break;
+        }
+      }
+    }
+
+    if (b.length && v.currentTime - b.start(0) > 90) {
+      p.sb.remove(b.start(0), v.currentTime - 30);
+      return;
+    }
+    if (p.loading) return;
+    var end = b.length ? b.end(b.length - 1) : 0;
+    if (p.target == null && end - v.currentTime > 20) return;
+
+    var seg = rwSegFrom(p.next);
+    if (!seg) return; // newer ones come with the next index
+    var gen = p.gen;
+    p.loading = true;
+    fetch(base + 'rewind/' + seg.n + '?t=' + encodeURIComponent(ticket), { credentials: 'same-origin' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Error ' + r.status);
+        return r.arrayBuffer();
+      })
+      .then(function (data) {
+        if (gen !== p.gen || rw.player !== p) return;
+        p.loading = false;
+        p.next = seg.n + 1;
+        p.pending = data;
+        pump();
+      })
+      .catch(function () {
+        if (gen !== p.gen) return;
+        // gone in the meantime, go on with the next one
+        p.loading = false;
+        p.next = seg.n + 1;
+      });
+  }
+
+  function tick() {
+    var p = rw.player;
+    if (!p) return;
+    var v = p.video, b = p.sb && p.sb.buffered;
+
+    // jump over the times nobody watched, nothing was recorded then
+    if (b && b.length && p.target == null && !v.seeking && !v.paused && !inBuffer(v.currentTime + 0.1)) {
+      for (var i = 0; i < b.length; i++) if (b.start(i) > v.currentTime) { v.currentTime = b.start(i); break; }
+    }
+    pump();
+
+    var now = rwNow(), at = v.currentTime * 1000;
+    if (p.target != null) at = p.target * 1000;
+
+    // caught up with the recording: back to the room
+    var loaded = b && b.length ? b.end(b.length - 1) * 1000 : 0;
+    if (p.target == null && !p.loading && !p.pending && !v.paused && loaded && at >= loaded - 700 && !rwSegFrom(p.next)) {
+      closeRewind('You are caught up');
+      return;
+    }
+
+    p.range.min = String(rwFirst() / 1000);
+    p.range.max = String(now / 1000);
+    if (!p.dragging) {
+      p.range.value = String(at / 1000);
+      p.badge.textContent = '⏪ ' + clock(now - at) + ' behind';
+    }
+    p.play.textContent = v.paused ? '▶' : '❚❚';
+  }
+
   function toast(text) {
     if (!text) return;
     var t = el('div', 'nrx-toast nrx', text);
@@ -319,6 +616,10 @@
     readEmotes();
     hookEmotes();
     connect();
+    if (rw.ok) {
+      rwFetch();
+      setInterval(function () { if (!rw.player) rwFetch(); }, 20000);
+    }
 
     // hands follow control: getting it lowers your hand, the person in
     // control sees the give button
