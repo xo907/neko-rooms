@@ -20,6 +20,11 @@ class Prefs(context: Context) {
     var touchInput: Boolean
         get() = sp.getBoolean("touch_input", true)
         set(value) = sp.edit().putBoolean("touch_input", value).apply()
+
+    // subtitle language picked in rooms, empty for none
+    var captions: String
+        get() = sp.getString("captions", "") ?: ""
+        set(value) = sp.edit().putString("captions", value).apply()
 }
 
 private val ipLike = Regex("""^\d{1,3}(\.\d{1,3}){3}$""")

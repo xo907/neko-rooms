@@ -45,6 +45,9 @@ import org.webrtc.VideoTrack
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicLong
 
+// the server's hidden viewer for rewind and subtitles, not someone in the room
+const val RECORDER = "⏪ rewind"
+
 data class Member(val id: String, val name: String, val isAdmin: Boolean, val connected: Boolean)
 
 data class ChatLine(val key: Long, val sender: String, val text: String, val system: Boolean, val mine: Boolean)
@@ -239,7 +242,8 @@ class NekoClient(http: OkHttpClient, siteCookies: CookieJar) {
         when (event) {
             "system/init" -> {
                 retries = 0
-                val sessions = (p["sessions"] as? JsonObject)?.mapValues { (id, v) -> member(id, v.jsonObject) } ?: emptyMap()
+                val sessions = (p["sessions"] as? JsonObject)?.mapValues { (id, v) -> member(id, v.jsonObject) }
+                    ?.filterValues { it.name != RECORDER } ?: emptyMap()
                 val screen = p["screen_size"] as? JsonObject
                 val host = p["control_host"] as? JsonObject
                 _state.update {
@@ -271,7 +275,9 @@ class NekoClient(http: OkHttpClient, siteCookies: CookieJar) {
 
             "session/created" -> {
                 val id = p.str("id") ?: return
-                _state.update { it.copy(members = it.members + (id to member(id, p))) }
+                val m = member(id, p)
+                if (m.name == RECORDER) return
+                _state.update { it.copy(members = it.members + (id to m)) }
             }
 
             "session/deleted" -> {

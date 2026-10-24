@@ -146,6 +146,7 @@ import app.rooms.neko.Buttons
 import app.rooms.neko.ChatLine
 import app.rooms.neko.Keys
 import app.rooms.neko.LiveClient
+import app.rooms.neko.RewindIndex
 import app.rooms.neko.LiveState
 import app.rooms.neko.Reaction
 import app.rooms.neko.NekoClient
@@ -240,13 +241,47 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
         }.onSuccess { url ->
             client.start(url)
             url.queryParameter("nrt")?.let { ticket ->
-                live = LiveClient(WatchPartyApp.instance.http, model.api.apiRoot(), name, ticket, url.queryParameter("usr") ?: nickname ?: "")
+                live = LiveClient(WatchPartyApp.instance.http, model.api.apiRoot(), name, ticket, url.queryParameter("usr") ?: nickname ?: "", model.prefs.captions)
                     .also { it.start() }
             }
         }.onFailure {
             waking = false
             joinError = it.message ?: "Could not join the room"
         }
+    }
+
+    // rewind: what the server kept of the room, checked now and then
+    var rewindIndex by remember { mutableStateOf<RewindIndex?>(null) }
+    var rewinding by remember { mutableStateOf<RewindIndex?>(null) }
+    LaunchedEffect(live, rewinding) {
+        val l = live ?: return@LaunchedEffect
+        if (rewinding != null) return@LaunchedEffect
+        while (true) {
+            rewindIndex = l.rewindIndex()
+            delay(20_000)
+        }
+    }
+    // the live sound goes quiet while rewinding
+    var mutedBefore by remember { mutableStateOf(false) }
+    LaunchedEffect(rewinding != null) {
+        if (rewinding != null) {
+            mutedBefore = st.muted
+            client.setMuted(true)
+        } else if (!mutedBefore && st.muted) {
+            client.setMuted(false)
+        }
+    }
+    val openRewind = {
+        val idx = rewindIndex
+        if (idx != null && idx.available) {
+            rewinding = idx
+            controls = true
+        }
+    }
+    val pickCaptions = { lang: String ->
+        model.prefs.captions = lang
+        live?.setCaptions(lang)
+        if (lang.isNotEmpty()) Toast.makeText(context, "Subtitles start with the next words", Toast.LENGTH_SHORT).show()
     }
 
     // messages from the live channel
@@ -415,12 +450,29 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                     live?.hand(false, h.id)
                 },
                 onHand = { live?.hand(!ls.handUp); poke++ },
+                live = live!!,
+                rewind = rewindIndex?.takeIf { it.available && rewinding == null },
+                onRewind = openRewind,
+                onCaptions = pickCaptions,
             )
         }
     }
-    // only reactions pass over the video, the rest stays in the bars
+    // only reactions and subtitles pass over the video, the rest stays in the
+    // bars; rewinding plays over all of it
     val stageOverlays = @Composable {
-        if (live != null) FlyingReactions(live, Modifier.fillMaxSize())
+        val l = live
+        if (l != null) {
+            FlyingReactions(l, Modifier.fillMaxSize())
+            val r = rewinding
+            if (r != null) {
+                RewindPlayer(l, r, onClose = { msg ->
+                    rewinding = null
+                    if (msg != null) Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }, Modifier.fillMaxSize())
+            } else if (ls.captions.isNotEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) { Captions(l) }
+            }
+        }
     }
     val chat = @Composable { modifier: Modifier ->
         ChatPanel(st, photoOf, onSend = client::sendChat, onMembers = { members = true }, onClose = { setChat(false) }, modifier = modifier)
@@ -553,13 +605,27 @@ private fun SocialBar(
     isHost: Boolean,
     onPass: (app.rooms.neko.Hand) -> Unit,
     onHand: () -> Unit,
+    live: LiveClient,
+    rewind: RewindIndex?,
+    onRewind: () -> Unit,
+    onCaptions: (String) -> Unit,
 ) {
+    var captionsMenu by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SocialPill("✋", if (ls.handUp) "Lower hand" else "Raise hand", active = ls.handUp, badge = ls.hands.size, onClick = onHand)
+        if (ls.captionLangs.isNotEmpty()) {
+            Box {
+                SocialPill("CC", if (ls.captions.isEmpty()) "Subtitles" else ls.captionLangs.firstOrNull { it.code == ls.captions }?.name ?: "Subtitles", active = ls.captions.isNotEmpty()) {
+                    captionsMenu = true
+                }
+                CaptionsMenu(live, captionsMenu, onDismiss = { captionsMenu = false }, onPick = onCaptions)
+            }
+        }
+        if (rewind != null) SocialPill("⏪", "Rewind", onClick = onRewind)
         ls.hands.firstOrNull()?.let { h ->
             val mine = h.id == ls.me?.id
             val more = if (ls.hands.size > 1) " · +${ls.hands.size - 1}" else ""

@@ -306,6 +306,41 @@ func (manager *ApiManagerCtx) rewindIndex(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, idx)
 }
 
+// rewindStream is the recording as one growing WebM from segment ?from=,
+// for players without MediaSource
+func (manager *ApiManagerCtx) rewindStream(w http.ResponseWriter, r *http.Request) {
+	from, _ := strconv.Atoi(r.URL.Query().Get("from"))
+	flusher, _ := w.(http.Flusher)
+	started := false
+	sw := writerFunc(func(p []byte) (int, error) {
+		if !started {
+			started = true
+			w.Header().Set("Content-Type", "video/webm")
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("X-Accel-Buffering", "no")
+			w.WriteHeader(http.StatusOK)
+		}
+		return w.Write(p)
+	})
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	err := manager.community.RewindStream(r.Context(), chi.URLParam(r, "roomName"), liveTicket(r, ""), from, sw, flush)
+	if err != nil && !started {
+		if errors.Is(err, os.ErrNotExist) {
+			http.Error(w, "gone", http.StatusNotFound)
+			return
+		}
+		manager.liveError(w, err)
+	}
+}
+
+type writerFunc func(p []byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
 func (manager *ApiManagerCtx) rewindSegment(w http.ResponseWriter, r *http.Request) {
 	n, err := strconv.Atoi(chi.URLParam(r, "n"))
 	if err != nil {
