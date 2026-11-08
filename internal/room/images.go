@@ -2,6 +2,7 @@ package room
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -25,7 +26,16 @@ type imagePull struct {
 type imagePulls struct {
 	mu    sync.Mutex
 	pulls map[string]*imagePull
+	// when an image the host has was last checked for a newer version
+	checked map[string]time.Time
 }
+
+// how long a room waits for a newer version of an image the host has, and
+// how often such an image is checked
+const (
+	refreshWait  = pullWait
+	refreshEvery = time.Hour
+)
 
 // pull downloads an image once at a time, callers that need the same image
 // wait for the same download. It keeps going in the background when the
@@ -80,20 +90,51 @@ func (manager *RoomManagerCtx) pullNow(image string) error {
 }
 
 // EnsureImage pulls an image the docker host does not have yet, it gives up
-// waiting after a while with types.ErrImagePulling.
+// waiting after a while with types.ErrImagePulling. An image the host has is
+// checked for a newer version now and then.
 func (manager *RoomManagerCtx) EnsureImage(ctx context.Context, image string) error {
 	return manager.ensureImage(ctx, image)
 }
 
 func (manager *RoomManagerCtx) ensureImage(ctx context.Context, image string) error {
 	_, err := manager.client.ImageInspect(ctx, image)
-	if err == nil || !errdefs.IsNotFound(err) {
+	if err == nil {
+		manager.refreshImage(ctx, image)
+		return nil
+	}
+	if !errdefs.IsNotFound(err) {
 		return err
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, pullWait)
 	defer cancel()
 	return manager.pull(ctx, image)
+}
+
+// refreshImage pulls a newer version of an image the host already has, when
+// one was published under the same tag, at most once an hour. A room does
+// not wait long for it: a slow download carries on in the background and
+// the room starts on the copy the host has.
+func (manager *RoomManagerCtx) refreshImage(ctx context.Context, image string) {
+	p := &manager.pulls
+	p.mu.Lock()
+	if p.checked == nil {
+		p.checked = map[string]time.Time{}
+	}
+	due := time.Since(p.checked[image]) > refreshEvery
+	if due {
+		p.checked[image] = time.Now()
+	}
+	p.mu.Unlock()
+	if !due {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, refreshWait)
+	defer cancel()
+	if err := manager.pull(ctx, image); err != nil && !errors.Is(err, types.ErrImagePulling) {
+		manager.logger.Warn().Err(err).Str("image", image).Msg("unable to check for a newer image, using the one the host has")
+	}
 }
 
 func (manager *RoomManagerCtx) imageID(ctx context.Context, image string) string {
