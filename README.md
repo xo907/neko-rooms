@@ -11,14 +11,14 @@ This is a fork of [m1k1o/neko-rooms](https://github.com/m1k1o/neko-rooms), the r
 <table>
   <tr>
     <td width="50%"><img src="docs/images/player.png" alt="Inside a room"><br><sub><b>Inside a room</b>: what is playing at the top, raise your hand for control.</sub></td>
-    <td width="50%"><img src="docs/images/room.png" alt="Room page"><br><sub><b>Room page</b>: live preview, who is in, share link.</sub></td>
+    <td width="50%"><img src="docs/images/room.png" alt="Room page"><br><sub><b>Room page</b>: live preview, who is in, what is playing, share link.</sub></td>
   </tr>
   <tr>
     <td><img src="docs/images/party.png" alt="Watch party"><br><sub><b>Watch parties</b>: RSVP, add to calendar, the room starts on its own.</sub></td>
     <td><img src="docs/images/preview.png" alt="Link preview"><br><sub><b>Link previews</b>: shared links show the room in Discord and other apps.</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/admin.png" alt="Admin settings"><br><sub><b>Admin</b>: sleeping rooms, now playing, Discord posts and more.</sub></td>
+    <td><img src="docs/images/admin.png" alt="My rooms"><br><sub><b>My rooms</b>: status, image and viewers of every room, start, stop and update from one menu.</sub></td>
     <td align="center"><img src="docs/images/mobile.png" alt="On a phone" width="45%"><br><sub><b>On a phone</b>, and there is an Android app.</sub></td>
   </tr>
 </table>

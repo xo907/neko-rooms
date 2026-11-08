@@ -1,616 +1,544 @@
 <template>
-  <v-card>
-    <v-card-title>
-      <span class="headline"> Create new Room </span>
-    </v-card-title>
-    <v-card-text>
-      <v-form
-        ref="form"
-        v-model="valid"
-        lazy-validation
-      >
-        <div class="nr-templates">
+  <v-card class="nr-create" role="dialog" aria-labelledby="nr-create-title">
+    <header class="nr-create-head">
+      <h2 id="nr-create-title">New room</h2>
+      <span v-if="roomLimit > 0" class="nr-mono nr-create-quota">{{ roomCount }} of {{ roomLimit }} used</span>
+      <span class="flex-grow-1" />
+      <button type="button" class="nr-btn is-icon" aria-label="Close" @click="Close"><v-icon small>mdi-close</v-icon></button>
+    </header>
+
+    <div class="nr-create-body">
+      <v-form ref="form" v-model="valid" lazy-validation @submit.prevent="CreateAndStart()">
+        <div class="nr-templates" role="group" aria-label="Templates">
           <button
             v-for="t in templates"
             :key="t.key"
             type="button"
             class="nr-template"
-            :class="{ 'is-active': template === t.key }"
+            :class="{ 'is-on': template === t.key }"
+            :aria-pressed="template === t.key"
             @click="useTemplate(t.key)"
           >
-            <v-icon>{{ t.icon }}</v-icon>
-            <span class="nr-template-name">{{ t.name }}</span>
-            <span class="nr-template-note">{{ t.note }}</span>
+            <v-icon small>{{ t.icon }}</v-icon>
+            <span>{{ t.name }}</span>
           </button>
         </div>
-        <v-row>
-          <v-col cols="12" class="pb-0">
-            <v-text-field label="Title" v-model="meta.title" placeholder="Movie night, Lo-fi beats, ..." counter="80" maxlength="80" />
-          </v-col>
-          <v-col cols="12" class="py-0">
-            <v-textarea label="Description" v-model="meta.description" rows="1" auto-grow counter="500" maxlength="500" />
-          </v-col>
-          <v-col cols="12" sm="6" class="py-0">
-            <v-combobox label="Category" v-model="meta.category" :items="categories" clearable />
-          </v-col>
-          <v-col cols="12" sm="6" class="py-0">
-            <v-select label="Visibility" v-model="meta.visibility" :items="visibilityItems">
-              <template v-slot:item="{ item }"><v-icon small class="mr-2">{{ item.icon }}</v-icon>{{ item.text }}</template>
-              <template v-slot:selection="{ item }"><v-icon small class="mr-2">{{ item.icon }}</v-icon>{{ item.text }}</template>
-            </v-select>
-          </v-col>
-          <v-col cols="12" class="py-0">
-            <v-text-field label="Start page" v-model="meta.start_url" placeholder="https://www.youtube.com" hint="Opens in the room's browser when it starts" persistent-hint clearable />
-          </v-col>
-        </v-row>
-        <v-row align="center">
-          <v-col class="pb-0">
+
+        <div class="nr-grid2">
+          <div class="nr-field is-wide">
+            <label class="nr-label" for="nr-c-title">Title</label>
+            <v-text-field id="nr-c-title" v-model="meta.title" outlined dense hide-details="auto" placeholder="Movie night, Lo-fi beats, …" maxlength="80" autofocus />
+          </div>
+
+          <div class="nr-field">
+            <label class="nr-label" for="nr-c-name">Name</label>
             <v-text-field
-              label="Name"
+              id="nr-c-name"
               v-model="data.name"
+              outlined
+              dense
+              hide-details="auto"
+              class="nr-input-mono"
               :rules="[ rules.minLen(2), rules.containerNameStart, rules.containerName ]"
               autocomplete="off"
-              :hint="!data.name ? '... using random name' : ''"
-              persistent-hint
-            ></v-text-field>
-          </v-col>
-          <v-col class="pb-0">
-            <v-select
-              label="Neko image"
-              :items="nekoImages"
-              v-model="data.neko_image"
-            ></v-select>
-          </v-col>
-        </v-row>
+              placeholder="random if empty"
+            />
+            <span class="nr-mono nr-hint">{{ host }}/r/{{ data.name || '…' }}</span>
+          </div>
 
-        <v-row align="center">
-          <v-col>
+          <div class="nr-field">
+            <span class="nr-label">Visibility</span>
+            <div class="nr-seg is-block is-field" role="group" aria-label="Visibility">
+              <button
+                v-for="v in visibilityItems"
+                :key="v.value"
+                type="button"
+                :class="{ 'is-on': meta.visibility === v.value }"
+                :disabled="v.disabled"
+                :title="v.text"
+                @click="meta.visibility = v.value"
+              >{{ v.short }}</button>
+            </div>
+          </div>
+
+          <div class="nr-field is-wide">
+            <span class="nr-label">Browser</span>
+            <div v-if="nekoImages.length <= 4" class="nr-engines" role="group" aria-label="Browser image">
+              <button
+                v-for="img in nekoImages"
+                :key="img"
+                type="button"
+                class="nr-engine"
+                :class="{ 'is-on': data.neko_image === img }"
+                :aria-pressed="data.neko_image === img"
+                :title="img"
+                @click="data.neko_image = img"
+              >
+                <span class="nr-engine-name">{{ engineOf(img) }}</span>
+                <span class="nr-mono nr-engine-image">{{ img }}</span>
+              </button>
+            </div>
+            <v-select v-else v-model="data.neko_image" :items="nekoImages" outlined dense hide-details class="nr-input-mono" aria-label="Browser image" />
+          </div>
+
+          <div class="nr-field">
+            <label class="nr-label" for="nr-c-user">Viewer password</label>
             <v-text-field
-              label="User password"
+              id="nr-c-user"
               v-model="data.user_pass"
-              :append-icon="showUserPass ? 'mdi-eye' : 'mdi-eye-off'"
+              outlined
+              dense
+              hide-details
+              class="nr-input-mono"
               :type="showUserPass ? 'text' : 'password'"
-              @click:append="showUserPass = !showUserPass"
               autocomplete="off"
-              :hint="!data.user_pass ? '... using random password' : ''"
-              persistent-hint
-            ></v-text-field>
-          </v-col>
-          <v-col>
-            <v-text-field
-              label="Admin password"
-              v-model="data.admin_pass"
-              :append-icon="showAdminPass ? 'mdi-eye' : 'mdi-eye-off'"
-              :type="showAdminPass ? 'text' : 'password'"
-              @click:append="showAdminPass = !showAdminPass"
-              autocomplete="off"
-              :hint="!data.admin_pass ? '... using random password' : ''"
-              persistent-hint
-            ></v-text-field>
-          </v-col>
-        </v-row>
-
-        <!-- if uses mux vs. old logic -->
-        <v-row align="center" v-if="usesMux">
-          <v-col class="pt-0">
-            <v-checkbox
-              v-model="data.control_protection"
-              label="Enable control protection"
-              hide-details
-              class="shrink ml-2 mt-0"
-            ></v-checkbox>
-            <div style="margin-left: 41px;"><i>Users can gain control only if at least one admin is in the room.</i></div>
-          </v-col>
-          <v-col class="pt-0">
-            <v-checkbox
-              v-model="data.implicit_control"
-              label="Enable implicit control"
-              hide-details
-              class="shrink ml-2 mt-0"
-            ></v-checkbox>
-            <div style="margin-left: 41px;"><i>Users do not need to request control prior usage.</i></div>
-          </v-col>
-        </v-row>
-        <v-row align="center" v-else>
-          <v-col class="pt-0">
-            <v-text-field
-              label="Max connections"
-              type="number"
-              :rules="[ rules.required, rules.nonZero, rules.onlyPositive ]"
-              v-model="data.max_connections"
-            ></v-text-field>
-          </v-col>
-          <v-col class="pt-0">
-            <v-checkbox
-              v-model="data.control_protection"
-              label="Enable control protection"
-              hide-details
-              class="shrink ml-2 mt-0"
-            ></v-checkbox>
-            <div style="margin-left: 41px;"><i>Users can gain control only if at least one admin is in the room.</i></div>
-            <v-checkbox
-              v-model="data.implicit_control"
-              label="Enable implicit control"
-              hide-details
-              class="shrink ml-2 mt-0"
-            ></v-checkbox>
-            <div style="margin-left: 41px;"><i>Users do not need to request control prior usage.</i></div>
-          </v-col>
-        </v-row>
-
-        <div class="my-3">
-          <a @click="screen = !screen"> {{ screen ? 'Hide' : 'View' }} screen settings </a>
-        </div>
-
-        <v-row align="center" v-if="screen">
-          <v-col>
-            <v-select
-              label="Initial screen configuration"
-              :items="availableScreens"
-              v-model="data.screen"
-            ></v-select>
-          </v-col>
-          <v-col>
-            <v-row align="center" no-gutters>
-              <v-text-field
-                :disabled="!maxFpsEnabled"
-                :rules="[ rules.required, rules.nonZero, rules.onlyPositive ]"
-                label="Max frames per second"
-                v-model="data.video_max_fps"
-              ></v-text-field>
-              <v-checkbox
-                v-model="maxFpsEnabled"
-                hide-details
-                class="shrink ml-2 mt-0"
-              ></v-checkbox>
-            </v-row>
-          </v-col>
-        </v-row>
-
-        <div class="my-3">
-          <a @click="extended = !extended"> {{ extended ? 'Hide' : 'View' }} extended settings </a>
-        </div>
-
-        <template v-if="extended">
-          <v-row align="center">
-            <v-col>
-              <v-select
-                label="Video codec"
-                :items="videoCodecs"
-                v-model="data.video_codec"
-              ></v-select>
-            </v-col>
-            <v-col>
-              <v-text-field
-                label="Video bitrate"
-                type="number"
-                :rules="[ rules.required, rules.nonZero, rules.onlyPositive ]"
-                v-model="data.video_bitrate"
-              ></v-text-field>
-            </v-col>
-          </v-row>
-          <v-row align="center">
-            <v-col>
-              <v-select
-                label="Audio codec"
-                :items="audioCodecs"
-                v-model="data.audio_codec"
-              ></v-select>
-            </v-col>
-            <v-col>
-              <v-text-field
-                label="Audio bitrate"
-                type="number"
-                :rules="[ rules.required, rules.nonZero, rules.onlyPositive ]"
-                v-model="data.audio_bitrate"
-              ></v-text-field>
-            </v-col>
-          </v-row>
-        </template>
-
-        <div class="my-3">
-          <a @click="expert = !expert"> {{ expert ? 'Hide' : 'View' }} expert settings </a>
-        </div>
-
-        <template v-if="expert">
-          <v-row align="center" no-gutters>
-            <v-checkbox
-              v-model="videoPipelineEnabled"
-              hide-details
-              class="shrink mr-2 mt-0"
-            ></v-checkbox>
-            <v-textarea
-              :disabled="!videoPipelineEnabled"
-              label="Video pipeline"
-              :rows="1"
-              auto-grow
-              v-model="data.video_pipeline"
-            ></v-textarea>
-          </v-row>
-          <v-row align="center" no-gutters>
-            <v-checkbox
-              v-model="audioPipelineEnabled"
-              hide-details
-              class="shrink mr-2 mt-0"
-            ></v-checkbox>
-            <v-textarea
-              :disabled="!audioPipelineEnabled"
-              label="Audio pipeline"
-              :rows="1"
-              auto-grow
-              v-model="data.audio_pipeline"
-            ></v-textarea>
-          </v-row>
-          <v-row align="center" no-gutters>
-            <v-checkbox
-              v-model="broadcastPipelineEnabled"
-              hide-details
-              class="shrink mr-2 mt-0"
-            ></v-checkbox>
-            <v-textarea
-              :disabled="!broadcastPipelineEnabled"
-              label="Broadcast pipeline"
-              :rows="1"
-              auto-grow
-              v-model="data.broadcast_pipeline"
-            ></v-textarea>
-          </v-row>
-          <v-row align="center" no-gutters>
-            <h2> Environment variables </h2>
-            <v-btn @click="addEnv" icon><v-icon>mdi-plus</v-icon></v-btn>
-          </v-row>
-          <v-row align="center" v-for="({ key, val }, index) in envList" :key="'env-'+index">
-            <v-col class="py-0">
-              <v-text-field
-                label="Key"
-                :value="key"
-                @input="setEnv(index, { key: $event, val })"
-                autocomplete="off"
-              ></v-text-field>
-            </v-col>
-            <div> = </div>
-            <v-col class="py-0">
-              <v-text-field
-                label="Value"
-                :value="val"
-                @input="setEnv(index, { key, val: $event })"
-                autocomplete="off"
-              ></v-text-field>
-            </v-col>
-            <div>
-              <v-btn @click="delEnv(index)" icon><v-icon>mdi-close</v-icon></v-btn>
-            </div>
-          </v-row>
-          <v-row align="center" no-gutters class="my-3">
-              <h2> Mounts </h2>
-              <v-btn @click="addMount" icon><v-icon>mdi-plus</v-icon></v-btn>
-          </v-row>
-          <v-row align="center" class="mb-2" v-for="({ type, host_path, container_path }, index) in data.mounts" :key="'mount-'+index">
-            <v-col class="py-0" cols="2">
-              <v-select
-                label="Type"
-                :items="mountTypes"
-                :value="type"
-                @input="setMount(index, { type: $event, host_path, container_path })"
-              ></v-select>
-            </v-col>
-            <v-col class="py-0 pl-0">
-              <v-text-field
-                label="Host path"
-                :value="host_path"
-                @input="setMount(index, { type, host_path: $event, container_path })"
-                :rules="[ rules.absolutePath ]"
-                autocomplete="off"
-              ></v-text-field>
-            </v-col>
-            <div> : </div>
-            <v-col class="py-0">
-              <v-text-field
-                label="Container path"
-                :value="container_path"
-                @input="setMount(index, { type, host_path, container_path: $event})"
-                :rules="[ rules.absolutePath ]"
-                autocomplete="off"
-              ></v-text-field>
-            </v-col>
-            <div>
-              <v-btn @click="delMount(index)" icon><v-icon>mdi-close</v-icon></v-btn>
-            </div>
-          </v-row>
-          <v-row align="center" no-gutters v-if="data.mounts && data.mounts.length > 0">
-            <v-alert
-              border="left"
-              type="warning"
-              v-if="!storageEnabled"
-              style="width: 100%"
+              placeholder="auto"
             >
-              <p><strong>Not all mount types are available!</strong></p>
-              <p class="mb-0">Private and Template mounts are not available, because storage is not enabled.</p>
-            </v-alert>
-            <p>
-              <span :style="{ opacity: !storageEnabled ? 0.25 : 1 }">
-                <strong>Private</strong>: Host path is relative to <code class="mx-1">&lt;storage path&gt;/rooms/&lt;room name&gt;/</code>. <br />
-                <strong>Template</strong>: Host path is relative to <code class="mx-1">&lt;storage path&gt;/templates/</code>, and will be readonly. <br />
-              </span>
-              <strong>Protected</strong>: Host path must be whitelisted in config and exists on the host, will be readonly. <br />
-              <strong>Public</strong>: Host path must be whitelisted in config and exists on the host.
-            </p>
-          </v-row>
-          <v-row align="center" no-gutters>
-            <h2> Resources </h2>
-          </v-row>
-          <v-row align="center" v-if="data.resources">
-            <v-col>
-              <v-slider
-                v-model="data.resources.memory"
-                label="Memory"
-                thumb-label="always"
-                :thumb-size="30"
-                :min="0"
-                :max="8*1e9"
-                :step="0.2*1e9"
-                color="blue"
+              <template v-slot:append>
+                <button type="button" class="nr-btn is-icon is-sm" :aria-label="showUserPass ? 'Hide' : 'Show'" @click="showUserPass = !showUserPass"><v-icon small>{{ showUserPass ? 'mdi-eye-off-outline' : 'mdi-eye-outline' }}</v-icon></button>
+                <button type="button" class="nr-btn is-icon is-sm" aria-label="Generate" @click="generate('user_pass')"><v-icon small>mdi-dice-5-outline</v-icon></button>
+                <button type="button" class="nr-btn is-icon is-sm" :class="{ 'is-done': copied === 'user_pass' }" aria-label="Copy" :disabled="!data.user_pass" @click="copy('user_pass')"><v-icon small>{{ copied === 'user_pass' ? 'mdi-check' : 'mdi-content-copy' }}</v-icon></button>
+              </template>
+            </v-text-field>
+          </div>
+
+          <div class="nr-field">
+            <label class="nr-label" for="nr-c-admin">Admin password</label>
+            <v-text-field
+              id="nr-c-admin"
+              v-model="data.admin_pass"
+              outlined
+              dense
+              hide-details
+              class="nr-input-mono"
+              :type="showAdminPass ? 'text' : 'password'"
+              autocomplete="off"
+              placeholder="auto"
+            >
+              <template v-slot:append>
+                <button type="button" class="nr-btn is-icon is-sm" :aria-label="showAdminPass ? 'Hide' : 'Show'" @click="showAdminPass = !showAdminPass"><v-icon small>{{ showAdminPass ? 'mdi-eye-off-outline' : 'mdi-eye-outline' }}</v-icon></button>
+                <button type="button" class="nr-btn is-icon is-sm" aria-label="Generate" @click="generate('admin_pass')"><v-icon small>mdi-dice-5-outline</v-icon></button>
+                <button type="button" class="nr-btn is-icon is-sm" :class="{ 'is-done': copied === 'admin_pass' }" aria-label="Copy" :disabled="!data.admin_pass" @click="copy('admin_pass')"><v-icon small>{{ copied === 'admin_pass' ? 'mdi-check' : 'mdi-content-copy' }}</v-icon></button>
+              </template>
+            </v-text-field>
+          </div>
+
+          <div class="nr-field">
+            <span class="nr-label">Screen</span>
+            <v-select v-model="data.screen" :items="availableScreens" outlined dense hide-details class="nr-input-mono" aria-label="Screen" />
+          </div>
+
+          <div class="nr-field">
+            <label class="nr-label" for="nr-c-start">Start page</label>
+            <v-text-field id="nr-c-start" v-model="meta.start_url" outlined dense hide-details class="nr-input-mono" placeholder="https://www.youtube.com" clearable />
+          </div>
+
+          <div class="nr-field">
+            <label class="nr-label" for="nr-c-cat">Category</label>
+            <v-combobox id="nr-c-cat" v-model="meta.category" :items="categories" outlined dense hide-details clearable />
+          </div>
+
+          <div v-if="!usesMux" class="nr-field">
+            <label class="nr-label" for="nr-c-max">Max connections</label>
+            <v-text-field id="nr-c-max" v-model="data.max_connections" type="number" outlined dense hide-details="auto" class="nr-input-mono" :rules="[ rules.required, rules.nonZero, rules.onlyPositive ]" />
+          </div>
+
+          <div class="nr-field is-wide">
+            <label class="nr-label" for="nr-c-desc">Description</label>
+            <v-textarea id="nr-c-desc" v-model="meta.description" outlined dense hide-details rows="2" auto-grow maxlength="500" placeholder="What is on, who is it for" />
+          </div>
+        </div>
+
+        <div class="nr-toggles">
+          <div class="nr-toggle">
+            <div><span>Control protection</span><small>Users can gain control only if at least one admin is in the room</small></div>
+            <v-switch v-model="data.control_protection" inset hide-details aria-label="Control protection" />
+          </div>
+          <div class="nr-toggle">
+            <div><span>Implicit control</span><small>Anyone can use the browser without asking for control first</small></div>
+            <v-switch v-model="data.implicit_control" inset hide-details aria-label="Implicit control" />
+          </div>
+        </div>
+
+        <!-- advanced container specs, closed by default -->
+        <section class="nr-adv">
+          <div class="nr-adv-head">
+            <span class="nr-label">Advanced container specs</span>
+            <span class="nr-mono">defaults are fine</span>
+          </div>
+
+          <button type="button" class="nr-adv-row" :aria-expanded="open.av" @click="open.av = !open.av">
+            <v-icon small>{{ open.av ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>Video &amp; audio
+            <span class="nr-mono">{{ summaryAv }}</span>
+          </button>
+          <div v-if="open.av" class="nr-adv-body nr-grid2">
+            <div class="nr-field">
+              <label class="nr-label" for="nr-c-fps">Max fps</label>
+              <v-text-field id="nr-c-fps" v-model="data.video_max_fps" outlined dense hide-details="auto" class="nr-input-mono" :disabled="!maxFpsEnabled" :rules="[ rules.required, rules.nonZero, rules.onlyPositive ]" />
+            </div>
+            <div class="nr-field nr-field-switch">
+              <v-switch v-model="maxFpsEnabled" inset hide-details label="Cap the frame rate" />
+            </div>
+            <div class="nr-field">
+              <span class="nr-label">Video codec</span>
+              <v-select v-model="data.video_codec" :items="videoCodecs" outlined dense hide-details class="nr-input-mono" aria-label="Video codec" />
+            </div>
+            <div class="nr-field">
+              <label class="nr-label" for="nr-c-vb">Video bitrate</label>
+              <v-text-field id="nr-c-vb" v-model="data.video_bitrate" type="number" outlined dense hide-details="auto" class="nr-input-mono" :rules="[ rules.required, rules.nonZero, rules.onlyPositive ]" />
+            </div>
+            <div class="nr-field">
+              <span class="nr-label">Audio codec</span>
+              <v-select v-model="data.audio_codec" :items="audioCodecs" outlined dense hide-details class="nr-input-mono" aria-label="Audio codec" />
+            </div>
+            <div class="nr-field">
+              <label class="nr-label" for="nr-c-ab">Audio bitrate</label>
+              <v-text-field id="nr-c-ab" v-model="data.audio_bitrate" type="number" outlined dense hide-details="auto" class="nr-input-mono" :rules="[ rules.required, rules.nonZero, rules.onlyPositive ]" />
+            </div>
+          </div>
+
+          <button type="button" class="nr-adv-row" :aria-expanded="open.res" @click="open.res = !open.res">
+            <v-icon small>{{ open.res ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>Resources
+            <span class="nr-mono">{{ summaryRes }}</span>
+          </button>
+          <div v-if="open.res && data.resources" class="nr-adv-body">
+            <div class="nr-slider">
+              <span>Memory</span>
+              <v-slider v-model="data.resources.memory" :min="0" :max="8*1e9" :step="0.2*1e9" hide-details aria-label="Memory" />
+              <span class="nr-mono">{{ data.resources.memory ? fmtMemory(data.resources.memory) : 'no limit' }}</span>
+            </div>
+            <div class="nr-slider">
+              <span>CPUs</span>
+              <v-slider v-model="data.resources.nano_cpus" :min="0" :max="8*1e9" :step="0.2*1e9" hide-details aria-label="CPUs" />
+              <span class="nr-mono">{{ data.resources.nano_cpus ? (data.resources.nano_cpus / 1e9).toFixed(1) : 'no limit' }}</span>
+            </div>
+            <div class="nr-slider">
+              <span>Shared memory</span>
+              <v-slider v-model="data.resources.shm_size" :min="0" :max="20*1e9" :step="0.2*1e9" hide-details aria-label="Shared memory" />
+              <span class="nr-mono">{{ data.resources.shm_size ? fmtMemory(data.resources.shm_size) : 'default' }}</span>
+            </div>
+            <div class="nr-toggle">
+              <div><span>Nvidia GPU</span><small>Needs the Nvidia docker runtime</small></div>
+              <v-switch
+                :input-value="!!(data.resources.gpus && data.resources.gpus.length)"
+                inset
                 hide-details
-              >
-                <template v-slot:thumb-label="{ value }">
-                  <span v-if="value">{{ value | memory }}</span>
-                  <span v-else>N/A</span>
-                </template>
-              </v-slider>
-            </v-col>
-            <v-col>
-              <v-slider
-                v-model="data.resources.nano_cpus"
-                label="CPUs"
-                thumb-label="always"
-                :thumb-size="30"
-                :min="0"
-                :max="8*1e9"
-                :step="0.2*1e9"
-                color="blue"
-                hide-details
-              >
-                <template v-slot:thumb-label="{ value }">
-                  <span v-if="value">{{ value | nanocpus }}</span>
-                  <span v-else>N/A</span>
-                </template>
-              </v-slider>
-            </v-col>
-          </v-row>
-          <v-row align="center" v-if="data.resources">
-            <v-col>
-              <v-slider
-                v-model="data.resources.shm_size"
-                label="Shared memory"
-                thumb-label="always"
-                :thumb-size="30"
-                :min="0"
-                :max="20*1e9"
-                :step="0.2*1e9"
-                color="blue"
-                hide-details
-              >
-                <template v-slot:thumb-label="{ value }">
-                  <span v-if="value">{{ value | memory }}</span>
-                  <span v-else>N/A</span>
-                </template>
-              </v-slider>
-            </v-col>
-            <v-col>
-              <v-checkbox
+                aria-label="Nvidia GPU"
                 @change="$set(data.resources, 'gpus', $event ? ['all'] : [])"
-                label="Enable Nvidia GPU support"
-                hide-details
-                class="shrink ml-2 mt-0"
-              ></v-checkbox>
-            <div style="margin-left: 41px;"><i>Nvidia docker runtime is required.</i></div>
-            </v-col>
-          </v-row>
-          <v-row align="center" v-if="data.resources">
-            <v-col class="pt-0">
-              <v-combobox class="pt-0"
-                label="Devices"
-                v-model="data.resources.devices"
-                :items="[ '/dev/dri/renderD128' ]"
-                multiple
-              >
-                <template v-slot:selection="{ attrs, item, parent, selected }">
-                  <v-chip
-                    v-bind="attrs"
-                    :input-value="selected"
-                    label
-                    small
-                  >
-                    <span class="pr-2">
-                      {{ item }}
-                    </span>
-                    <v-icon
-                      small
-                      @click="parent.selectItem(item)"
-                    >
-                      $delete
-                    </v-icon>
-                  </v-chip>
-                </template>
-              </v-combobox>
-            </v-col>
-          </v-row>
-          <v-row align="center" no-gutters class="mt-3">
-            <h2> Network </h2>
-          </v-row>
-          <v-row align="center" class="mt-0">
-            <v-col class="py-0">
-              <v-text-field
-                label="Hostname"
-                v-model="data.hostname"
-                autocomplete="off"
-              ></v-text-field>
-            </v-col>
-            <v-col class="pt-0">
-              <v-combobox class="pt-0"
-                label="DNS"
-                v-model="data.dns"
-                multiple
-                hide-details
-              >
-                <template v-slot:selection="{ attrs, item, parent, selected }">
-                  <v-chip
-                    v-bind="attrs"
-                    :input-value="selected"
-                    label
-                    small
-                  >
-                    <span class="pr-2">
-                      {{ item }}
-                    </span>
-                    <v-icon
-                      small
-                      @click="parent.selectItem(item)"
-                    >
-                      $delete
-                    </v-icon>
-                  </v-chip>
-                </template>
-              </v-combobox>
-            </v-col>
-          </v-row>
-          <v-row align="center" no-gutters class="mb-3">
-            <v-col>
-              <p> <i> Leave empty to use container name. </i> </p>
-            </v-col>
-            <v-col class="pl-6">
-              <p> <i> Leave empty to use system defaults.</i> </p>
-            </v-col>
-          </v-row>
-        </template>
+              />
+            </div>
+            <div class="nr-field">
+              <span class="nr-label">Devices</span>
+              <v-combobox v-model="data.resources.devices" :items="[ '/dev/dri/renderD128' ]" multiple small-chips deletable-chips outlined dense hide-details class="nr-input-mono" aria-label="Devices" />
+            </div>
+          </div>
 
-        <v-row align="center" no-gutters class="mt-3">
-          <h2 class="my-3">
-            Browser policy
-          </h2>
-          <v-checkbox
-            v-model="browserPolicyEnabled"
-            :disabled="!browserPolicyConfig || !storageEnabled"
-            hide-details
-            class="shrink ml-2 mt-0"
-          ></v-checkbox>
-        </v-row>
+          <button type="button" class="nr-adv-row" :aria-expanded="open.env" @click="open.env = !open.env">
+            <v-icon small>{{ open.env ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>Environment
+            <span class="nr-mono">{{ envList.length }} {{ envList.length === 1 ? 'var' : 'vars' }}</span>
+          </button>
+          <div v-if="open.env" class="nr-adv-body">
+            <div v-for="({ key, val }, index) in envList" :key="'env-' + index" class="nr-pair">
+              <v-text-field :value="key" outlined dense hide-details class="nr-input-mono" placeholder="KEY" autocomplete="off" aria-label="Key" @input="setEnv(index, { key: $event, val })" />
+              <span class="nr-mono">=</span>
+              <v-text-field :value="val" outlined dense hide-details class="nr-input-mono" placeholder="value" autocomplete="off" aria-label="Value" @input="setEnv(index, { key, val: $event })" />
+              <button type="button" class="nr-btn is-icon is-sm is-danger" aria-label="Remove variable" @click="delEnv(index)"><v-icon small>mdi-close</v-icon></button>
+            </div>
+            <button type="button" class="nr-btn is-sm is-secondary nr-add" @click="addEnv"><v-icon small>mdi-plus</v-icon>Add variable</button>
+          </div>
 
-        <v-alert
-          border="left"
-          type="warning"
-          v-if="!storageEnabled"
-        >
-          <p><strong>Not available!</strong></p>
-          <p class="mb-0">Browser policy is not available, because storage is not enabled.</p>
-        </v-alert>
-        <template v-else-if="browserPolicyConfig">
-          <v-row align="center" no-gutters class="mt-0">
-            <v-col>
-              <v-select
-                v-model="browserPolicyContent.extensions"
-                label="Extensions"
-                :items="browserPolicyExtensions"
-                multiple
-                :disabled="!browserPolicyEnabled"
-              ></v-select>
-            </v-col>
-          </v-row>
+          <button type="button" class="nr-adv-row" :aria-expanded="open.mounts" @click="open.mounts = !open.mounts">
+            <v-icon small>{{ open.mounts ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>Mounts
+            <span class="nr-mono">{{ (data.mounts || []).length || 'none' }}</span>
+          </button>
+          <div v-if="open.mounts" class="nr-adv-body">
+            <div v-for="({ type, host_path, container_path }, index) in data.mounts" :key="'mount-' + index" class="nr-mount">
+              <v-select :items="mountTypes" :value="type" outlined dense hide-details aria-label="Mount type" @input="setMount(index, { type: $event, host_path, container_path })" />
+              <v-text-field :value="host_path" outlined dense hide-details="auto" class="nr-input-mono" placeholder="host path" autocomplete="off" aria-label="Host path" :rules="[ rules.absolutePath ]" @input="setMount(index, { type, host_path: $event, container_path })" />
+              <v-text-field :value="container_path" outlined dense hide-details="auto" class="nr-input-mono" placeholder="container path" autocomplete="off" aria-label="Container path" :rules="[ rules.absolutePath ]" @input="setMount(index, { type, host_path, container_path: $event })" />
+              <button type="button" class="nr-btn is-icon is-sm is-danger" aria-label="Remove mount" @click="delMount(index)"><v-icon small>mdi-close</v-icon></button>
+            </div>
+            <p v-if="data.mounts && data.mounts.length" class="nr-note">
+              <span v-if="!storageEnabled">Private and Template mounts need storage, which is not enabled.<br></span>
+              <span :class="{ 'is-dim': !storageEnabled }"><strong>Private</strong>: relative to <code>&lt;storage&gt;/rooms/&lt;room&gt;/</code>. <strong>Template</strong>: relative to <code>&lt;storage&gt;/templates/</code>, read only.</span><br>
+              <strong>Protected</strong>: a whitelisted host path, read only. <strong>Public</strong>: a whitelisted host path.
+            </p>
+            <button type="button" class="nr-btn is-sm is-secondary nr-add" @click="addMount"><v-icon small>mdi-plus</v-icon>Add mount</button>
+          </div>
 
-          <v-row align="center">
-            <v-col>
-              <v-checkbox
-                v-model="browserPolicyContent.developer_tools"
-                label="Enable developer tools"
-                hide-details
-                class="shrink ml-2 mt-0"
-                :disabled="!browserPolicyEnabled"
-              ></v-checkbox>
-            </v-col>
-            <v-col>
-              <v-checkbox
-                v-model="browserPolicyContent.persistent_data"
-                label="Allow persistent data"
-                hide-details
-                class="shrink ml-2 mt-0"
-                :disabled="!browserPolicyEnabled"
-              ></v-checkbox>
-            </v-col>
-          </v-row>
-        </template>
-        <v-alert
-          border="left"
-          type="info"
-          v-else
-        >
-          <p><strong>Not available!</strong></p>
-          <p class="mb-0">Browser policy is not available for this image.</p>
-        </v-alert>
+          <button type="button" class="nr-adv-row" :aria-expanded="open.net" @click="open.net = !open.net">
+            <v-icon small>{{ open.net ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>Network
+            <span class="nr-mono">{{ data.hostname || 'container name' }}</span>
+          </button>
+          <div v-if="open.net" class="nr-adv-body nr-grid2">
+            <div class="nr-field">
+              <label class="nr-label" for="nr-c-host">Hostname</label>
+              <v-text-field id="nr-c-host" v-model="data.hostname" outlined dense hide-details class="nr-input-mono" placeholder="container name" autocomplete="off" />
+            </div>
+            <div class="nr-field">
+              <span class="nr-label">DNS</span>
+              <v-combobox v-model="data.dns" multiple small-chips deletable-chips outlined dense hide-details class="nr-input-mono" placeholder="system default" aria-label="DNS" />
+            </div>
+          </div>
+
+          <button type="button" class="nr-adv-row" :aria-expanded="open.pipes" @click="open.pipes = !open.pipes">
+            <v-icon small>{{ open.pipes ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>Pipelines
+            <span class="nr-mono">{{ summaryPipes }}</span>
+          </button>
+          <div v-if="open.pipes" class="nr-adv-body">
+            <div class="nr-pipe">
+              <v-switch v-model="videoPipelineEnabled" inset hide-details label="Video pipeline" />
+              <v-textarea v-if="videoPipelineEnabled" v-model="data.video_pipeline" outlined dense hide-details rows="1" auto-grow class="nr-input-mono" aria-label="Video pipeline" />
+            </div>
+            <div class="nr-pipe">
+              <v-switch v-model="audioPipelineEnabled" inset hide-details label="Audio pipeline" />
+              <v-textarea v-if="audioPipelineEnabled" v-model="data.audio_pipeline" outlined dense hide-details rows="1" auto-grow class="nr-input-mono" aria-label="Audio pipeline" />
+            </div>
+            <div class="nr-pipe">
+              <v-switch v-model="broadcastPipelineEnabled" inset hide-details label="Broadcast pipeline" />
+              <v-textarea v-if="broadcastPipelineEnabled" v-model="data.broadcast_pipeline" outlined dense hide-details rows="1" auto-grow class="nr-input-mono" aria-label="Broadcast pipeline" />
+            </div>
+          </div>
+
+          <button type="button" class="nr-adv-row" :aria-expanded="open.policy" @click="open.policy = !open.policy">
+            <v-icon small>{{ open.policy ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>Browser policy
+            <span class="nr-mono">{{ summaryPolicy }}</span>
+          </button>
+          <div v-if="open.policy" class="nr-adv-body">
+            <p v-if="!storageEnabled" class="nr-note">Browser policy needs storage, which is not enabled.</p>
+            <p v-else-if="!browserPolicyConfig" class="nr-note">Browser policy is not available for this image.</p>
+            <template v-else>
+              <div class="nr-toggle">
+                <div><span>Use a browser policy</span><small>Extensions and browser settings for this room</small></div>
+                <v-switch v-model="browserPolicyEnabled" inset hide-details aria-label="Use a browser policy" />
+              </div>
+              <div class="nr-field">
+                <span class="nr-label">Extensions</span>
+                <v-select v-model="browserPolicyContent.extensions" :items="browserPolicyExtensions" multiple small-chips outlined dense hide-details :disabled="!browserPolicyEnabled" aria-label="Extensions" />
+              </div>
+              <div class="nr-toggle">
+                <div><span>Developer tools</span></div>
+                <v-switch v-model="browserPolicyContent.developer_tools" inset hide-details :disabled="!browserPolicyEnabled" aria-label="Developer tools" />
+              </div>
+              <div class="nr-toggle">
+                <div><span>Persistent data</span><small>Keep the browser profile between restarts</small></div>
+                <v-switch v-model="browserPolicyContent.persistent_data" inset hide-details :disabled="!browserPolicyEnabled" aria-label="Persistent data" />
+              </div>
+            </template>
+          </div>
+        </section>
       </v-form>
-    </v-card-text>
-    <v-card-actions>
-      <v-spacer></v-spacer>
-      <v-btn
-        text
-        @click="Close"
-      >
-        Close
-      </v-btn>
-      <v-btn
-        outlined
-        @click="Create(false)"
-        :loading="loading && !loadingWithStart"
-      >
-        Create
-      </v-btn>
-      <v-btn
-        color="primary"
-        depressed
-        @click="CreateAndStart()"
-        :loading="loadingWithStart"
-      >
-        Create and start
-      </v-btn>
-    </v-card-actions>
+    </div>
+
+    <footer class="nr-create-foot">
+      <span class="nr-mono nr-create-summary">{{ engineOf(data.neko_image) }} · {{ data.screen }} · {{ usesMux ? 'mux' : data.max_connections + ' seats' }}</span>
+      <span class="flex-grow-1" />
+      <button type="button" class="nr-btn" @click="Close">Cancel</button>
+      <button type="button" class="nr-btn is-secondary" :disabled="loading" @click="Create(false)">
+        <v-progress-circular v-if="loading && !loadingWithStart" indeterminate size="14" width="2" />Create
+      </button>
+      <button type="button" class="nr-btn is-primary" :disabled="loading" @click="CreateAndStart()">
+        <v-progress-circular v-if="loadingWithStart" indeterminate size="14" width="2" />Create &amp; start
+      </button>
+    </footer>
   </v-card>
 </template>
 
 <style lang="scss" scoped>
-.nr-templates {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-  gap: 8px;
-  margin-bottom: 18px;
+.nr-create {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
+.nr-create-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+  padding: 0 16px 0 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  h2 { margin: 0; font-size: 17px !important; font-weight: 600; letter-spacing: -0.025em !important; }
+}
+.nr-create-quota { font-size: 11.5px; color: var(--text-tertiary); }
+.nr-create-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  > form { display: flex; flex-direction: column; gap: 24px; }
+}
+.nr-create-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 72px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-1);
+}
+.nr-create-summary { font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+.nr-templates { display: flex; flex-wrap: wrap; gap: 8px; }
 .nr-template {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font: 500 13px var(--font-sans);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+  .v-icon { color: inherit !important; }
+  &:hover { color: var(--text-primary); border-color: var(--border-hover); }
+  &.is-on { color: var(--text-primary); background: var(--bg-surface-3); border-color: var(--border-hover); }
+}
+
+.nr-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.nr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  &.is-wide { grid-column: 1 / -1; }
+}
+.nr-field-switch { justify-content: flex-end; padding-bottom: 6px; }
+.nr-hint { font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.nr-engines { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.nr-engine {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 8px;
+  min-width: 0;
   padding: 12px;
-  border-radius: calc(var(--nr-radius, 12px) * 1.1);
-  border: 1px solid var(--nr-line, rgba(255, 255, 255, .1));
-  background: transparent;
-  color: inherit;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   text-align: left;
   cursor: pointer;
-  transition: border-color .18s, background .18s;
-  .v-icon { margin-bottom: 6px; color: var(--nr-muted) !important; }
-  &:hover { background: var(--nr-hover, rgba(255, 255, 255, .04)); }
-  &.is-active {
-    border-color: color-mix(in srgb, var(--nr-primary) 60%, transparent);
-    background: color-mix(in srgb, var(--nr-primary) 8%, transparent);
-    .v-icon { color: var(--nr-primary) !important; }
-  }
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  &:hover { border-color: var(--border-hover); }
+  &.is-on { border-color: var(--border-focus); background: var(--bg-surface-3); color: var(--text-primary); }
 }
-.nr-template-name { font-weight: 600; font-size: 13.5px; }
-.nr-template-note { font-size: 11.5px; color: var(--nr-muted); line-height: 1.3; }
+.nr-engine-name { font: 500 13px var(--font-sans); text-transform: capitalize; }
+.nr-engine-image { max-width: 100%; font-size: 10.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.nr-toggles { display: flex; flex-direction: column; gap: 16px; }
+.nr-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  > div:first-child { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  span { font-size: 13.5px; color: var(--text-primary); }
+  small { font-size: 12.5px; color: var(--text-tertiary); }
+  .v-input { flex: none; margin: 0; padding: 0; }
+}
+
+.nr-adv {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.nr-adv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 44px;
+  padding: 0 16px;
+  background: var(--bg-surface-2);
+  .nr-label { color: var(--text-secondary) !important; }
+  .nr-mono { font-size: 11px; color: var(--text-tertiary); }
+}
+.nr-adv-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-primary);
+  font: 500 13.5px var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+  &:hover { background: rgba(255, 255, 255, .02); }
+  .v-icon { color: var(--text-tertiary) !important; }
+  .nr-mono { margin-left: auto; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+}
+.nr-adv-body {
+  padding: 8px 16px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  &.nr-grid2 { display: grid; }
+}
+.nr-slider {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 16px;
+  > span:first-child { font-size: 13px; color: var(--text-secondary); }
+  > .nr-mono { font-size: 12.5px; text-align: right; color: var(--text-primary); }
+  .v-input { margin: 0; padding: 0; }
+}
+.nr-pair, .nr-mount {
+  display: grid;
+  align-items: center;
+  gap: 8px;
+}
+.nr-pair { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) 30px; > .nr-mono { color: var(--text-tertiary); } }
+.nr-mount { grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1fr) 30px; }
+.nr-add { align-self: flex-start; }
+.nr-pipe { display: flex; flex-direction: column; gap: 8px; .v-input--switch { margin: 0; } }
+.nr-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  strong { color: var(--text-secondary); font-weight: 500; }
+  .is-dim { opacity: .5; }
+}
+
+@media (max-width: 600px) {
+  .nr-grid2 { grid-template-columns: minmax(0, 1fr); }
+  .nr-adv-body { padding-left: 16px; }
+  .nr-slider { grid-template-columns: 96px minmax(0, 1fr) 64px; }
+  .nr-mount { grid-template-columns: minmax(0, 1fr) 30px; }
+  .nr-create-summary { display: none; }
+  .nr-create-foot { flex-wrap: wrap; }
+}
+</style>
+
+<style lang="scss">
+// monospace for values machines read: names, passwords, paths, codecs
+.nr-input-mono input, .nr-input-mono textarea, .nr-input-mono .v-select__selection {
+  font-family: var(--font-mono) !important;
+  font-size: 13px !important;
+}
+.nr-create .v-text-field--outlined .v-input__append-inner { margin-top: 0 !important; align-self: center; display: flex; gap: 2px; margin-right: -8px; }
 </style>
 
 <script lang="ts">
 import { Vue, Component, Ref, Watch } from 'vue-property-decorator'
 import { AxiosError } from 'axios'
 import { randomPassword } from '@/utils/random'
+import { copyText } from '@/utils/join'
 
 import {
   RoomSettings,
@@ -688,15 +616,16 @@ export default class RoomsCreate extends Vue {
     const policy = this.$store.getters.policy
     const isAdmin = this.$store.getters.isAdmin
     return [
-      { text: 'Public, listed on the homepage', value: 'public', icon: 'mdi-earth', disabled: !isAdmin && !(policy && policy.users_can_make_public) },
-      { text: 'Friends only', value: 'friends', icon: 'mdi-account-multiple', disabled: !(policy && policy.friends_enabled) },
-      { text: 'Private, invite link only', value: 'private', icon: 'mdi-lock' },
+      { text: 'Public, listed on the homepage', short: 'Public', value: 'public', icon: 'mdi-earth', disabled: !isAdmin && !(policy && policy.users_can_make_public) },
+      { text: 'Friends only', short: 'Friends', value: 'friends', icon: 'mdi-account-multiple', disabled: !(policy && policy.friends_enabled) },
+      { text: 'Private, invite link only', short: 'Invite', value: 'private', icon: 'mdi-lock' },
     ]
   }
 
-  public screen = true
-  public extended = false
-  public expert = false
+  // which advanced sections are open
+  public open = { av: false, res: false, env: false, mounts: false, net: false, pipes: false, policy: false }
+  public copied = ''
+  private copiedTimer = 0
 
   public showUserPass = false
   public showAdminPass = false
@@ -736,6 +665,78 @@ export default class RoomsCreate extends Vue {
     },
     absolutePath(val: string) {
       return val[0] !== "/" ? 'Must be absolute path, starting with /.' : true
+    }
+  }
+
+  get host(): string {
+    return window.location.host
+  }
+
+  get roomLimit(): number {
+    const st = this.$store.state.app.status
+    return st ? st.room_limit : 0
+  }
+
+  get roomCount(): number {
+    const st = this.$store.state.app.status
+    return st ? st.room_count : 0
+  }
+
+  get summaryAv(): string {
+    const fps = this.maxFpsEnabled ? this.data.video_max_fps + ' fps' : 'no fps cap'
+    return [fps, this.data.video_codec, this.data.audio_codec].filter(Boolean).join(' · ')
+  }
+
+  get summaryRes(): string {
+    const r = this.data.resources
+    if (!r) return 'no limits'
+    const parts = [
+      r.memory ? this.fmtMemory(r.memory) : 'no memory limit',
+      r.nano_cpus ? (r.nano_cpus / 1e9).toFixed(1) + ' CPU' : 'no CPU limit',
+    ]
+    if (r.shm_size) parts.push(this.fmtMemory(r.shm_size) + ' shm')
+    if (r.gpus && r.gpus.length) parts.push('GPU')
+    return parts.join(' · ')
+  }
+
+  get summaryPipes(): string {
+    const n = [this.videoPipelineEnabled, this.audioPipelineEnabled, this.broadcastPipelineEnabled].filter(Boolean).length
+    return n ? n + ' custom' : 'defaults'
+  }
+
+  get summaryPolicy(): string {
+    if (!this.storageEnabled || !this.browserPolicyConfig) return 'not available'
+    if (!this.browserPolicyEnabled) return 'off'
+    const n = (this.browserPolicyContent.extensions || []).length
+    return n + (n === 1 ? ' extension' : ' extensions')
+  }
+
+  fmtMemory(value: number): string {
+    if (value < 1e9) return (value / 1e6).toFixed(0) + ' MB'
+    return (value / 1e9).toFixed(1) + ' GB'
+  }
+
+  // engineOf names the browser of an image, ghcr.io/m1k1o/neko/firefox:latest
+  // and m1k1o/neko:firefox both run firefox
+  engineOf(image?: string): string {
+    const last = (image || '').split('/').pop() || ''
+    const [base, tag] = last.split(':')
+    return base === 'neko' && tag ? tag : (base || '')
+  }
+
+  generate(field: 'user_pass' | 'admin_pass') {
+    Vue.set(this.data, field, randomPassword())
+    if (field === 'user_pass') this.showUserPass = true
+    else this.showAdminPass = true
+  }
+
+  async copy(field: 'user_pass' | 'admin_pass') {
+    const value = this.data[field]
+    if (!value) return
+    if (await copyText(value)) {
+      this.copied = field
+      window.clearTimeout(this.copiedTimer)
+      this.copiedTimer = window.setTimeout(() => { this.copied = '' }, 1500)
     }
   }
 

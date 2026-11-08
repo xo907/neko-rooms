@@ -1,0 +1,56 @@
+// Design tokens of the cinema control deck. These are the defaults; the
+// admin branding (branding/theme.ts) redefines them from its palette, so
+// every color below can be changed in Admin → Branding.
+
+:root {
+  // surfaces, one luminance step per level of elevation
+  --bg-canvas: #09090B;
+  --bg-surface-1: #111114;
+  --bg-surface-2: #18181C;
+  --bg-surface-3: #222228;
+
+  // ink
+  --text-primary: #F4F4F6;
+  --text-secondary: #A1A1AA;
+  --text-tertiary: #85858E; // 4.5:1 on every surface, for 12px metadata
+  --text-disabled: #5C5C64;
+
+  // hairlines
+  --border-subtle: rgba(255, 255, 255, .07);
+  --border-hover: rgba(255, 255, 255, .15);
+  --border-focus: rgba(255, 255, 255, .35);
+  --focus-ring: 0 0 0 3px rgba(255, 255, 255, .06);
+
+  // the one loud color, and what is written on it
+  --accent-primary: #EDEDEF;
+  --accent-ink: #09090B;
+
+  // telemetry
+  --status-online: #10B981;
+  --status-online-ink: #34D399;
+  --status-online-bg: rgba(16, 185, 129, .12);
+  --status-provisioning: #F59E0B;
+  --status-provisioning-ink: #FBBF24;
+  --status-provisioning-bg: rgba(245, 158, 11, .12);
+  --status-danger: #EF4444;
+  --status-danger-ink: #F87171;
+  --status-danger-bg: rgba(239, 68, 68, .1);
+
+  // type
+  --font-sans: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+
+  // radii nest: 10 outside, 8 for buttons, 6 for fields and pills
+  --radius-lg: 10px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
+
+  // motion
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --dur: 150ms;
+
+  // layout
+  --header-h: 56px;
+  --page-max: 1200px;
+  --page-pad: clamp(1.25rem, 4vw, 3rem);
+}

@@ -36,11 +36,11 @@ func DefaultSwal2Page() Swal2Page {
 	return Swal2Page{
 		Title:           "Neko rooms",
 		AppName:         "neko-rooms",
-		FontFamily:      "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
-		BackgroundColor: "#060607",
-		PopupColor:      "#0e0e11",
-		TextColor:       "#f4f4f5",
-		ButtonColor:     "#2dd4bf",
+		FontFamily:      "Geist, Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+		BackgroundColor: "#09090b",
+		PopupColor:      "#111114",
+		TextColor:       "#f4f4f6",
+		ButtonColor:     "#ededef",
 		PoweredBy:       true,
 	}
 }

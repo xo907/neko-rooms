@@ -1,12 +1,47 @@
 <template>
-  <v-tooltip bottom v-if="tmpl" open-delay="300">
+  <!-- a row in a menu -->
+  <v-list-item v-if="tmpl && variant === 'item'" :disabled="disabled || loading" @click="Action">
+    <v-list-item-title :class="{ 'nr-action-warn': highlight, 'nr-action-danger': action === 'remove' }">{{ tmpl.label }}</v-list-item-title>
+    <v-progress-circular v-if="loading" indeterminate size="14" width="2" class="ml-3" />
+  </v-list-item>
+
+  <!-- a labelled button -->
+  <button
+    v-else-if="tmpl && variant === 'button'"
+    type="button"
+    class="nr-btn is-sm is-secondary"
+    :disabled="disabled || loading"
+    @click="Action"
+  >
+    <v-progress-circular v-if="loading" indeterminate size="12" width="2" />
+    <v-icon v-else small>{{ tmpl.icon }}</v-icon>{{ tmpl.label }}
+  </button>
+
+  <!-- an icon with a tooltip -->
+  <v-tooltip bottom v-else-if="tmpl" open-delay="300">
     <template v-slot:activator="{ on, attrs }">
-      <v-btn v-bind="attrs" v-on="on" @click="Action" :color="tmpl.color" :disabled="disabled" :loading="loading"
-        icon><v-icon>{{ tmpl.icon }}</v-icon></v-btn>
+      <button
+        v-bind="attrs"
+        v-on="on"
+        type="button"
+        class="nr-btn is-icon is-sm"
+        :class="{ 'is-danger': action === 'remove' }"
+        :disabled="disabled || loading"
+        :aria-label="tmpl.tooltip"
+        @click="Action"
+      >
+        <v-progress-circular v-if="loading" indeterminate size="14" width="2" />
+        <v-icon v-else small>{{ tmpl.icon }}</v-icon>
+      </button>
     </template>
     <span>{{ tmpl.tooltip }}</span>
   </v-tooltip>
 </template>
+
+<style lang="scss" scoped>
+.nr-action-warn { color: var(--status-provisioning-ink) !important; }
+.nr-action-danger { color: var(--status-danger-ink) !important; }
+</style>
 
 <script lang="ts">
 import { Vue, Component, Prop } from 'vue-property-decorator'
@@ -19,6 +54,9 @@ export default class RoomActionBtn extends Vue {
   @Prop(String) readonly roomId!: string
   @Prop(String) readonly roomName!: string
   @Prop(Boolean) readonly disabled!: boolean
+  // icon (default), item for a menu row or button for a labelled button
+  @Prop({ type: String, default: 'icon' }) readonly variant!: string
+  @Prop(Boolean) readonly highlight!: boolean
 
   public loading = false
 
@@ -30,30 +68,34 @@ export default class RoomActionBtn extends Vue {
           dispatch: 'ROOMS_START',
           msg: 'Room started!',
           tooltip: 'Start',
+          label: 'Start',
           color: 'green',
-          icon: 'mdi-play-circle-outline',
+          icon: 'mdi-power',
         }
       case 'stop':
         return {
           dispatch: 'ROOMS_STOP',
           msg: 'Room stopped!',
           tooltip: 'Stop',
+          label: 'Stop',
           color: 'warning',
-          icon: 'mdi-stop-circle-outline',
+          icon: 'mdi-stop',
         }
       case 'pause':
         return {
           dispatch: 'ROOMS_PAUSE',
           msg: 'Room paused!',
           tooltip: 'Pause',
+          label: 'Pause',
           color: 'orange',
-          icon: 'mdi-pause-circle-outline',
+          icon: 'mdi-pause',
         }
       case 'restart':
         return {
           dispatch: 'ROOMS_RESTART',
           msg: 'Room restarted!',
           tooltip: 'Restart',
+          label: 'Restart',
           color: 'blue',
           icon: 'mdi-refresh',
         }
@@ -62,13 +104,15 @@ export default class RoomActionBtn extends Vue {
           dispatch: 'ROOMS_RECREATE',
           msg: 'Room recreated!',
           tooltip: 'Recreate',
+          label: 'Recreate',
           color: 'blue',
-          icon: 'mdi-cloud-refresh',
+          icon: 'mdi-backup-restore',
         }
       case 'upgrade':
         return {
           msg: 'Room updated!',
           tooltip: 'Update the image: pull the newest version and recreate the room on it',
+          label: 'Update image',
           color: 'primary',
           icon: 'mdi-update',
         }
@@ -76,7 +120,8 @@ export default class RoomActionBtn extends Vue {
         return {
           dispatch: 'ROOMS_REMOVE',
           msg: 'Room removed!',
-          tooltip: 'Remove',
+          tooltip: 'Destroy room',
+          label: 'Destroy room',
           color: 'red',
           icon: 'mdi-trash-can-outline',
         }
@@ -115,12 +160,12 @@ export default class RoomActionBtn extends Vue {
 
     if (this.action === 'remove') {
       const { value } = await this.$swal({
-        title: "Remove room",
-        text: "Do you really want to remove this room?",
+        title: "Destroy room",
+        text: "The room and its container are removed. This can not be undone.",
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: "Yes",
-        cancelButtonText: "No",
+        confirmButtonText: "Destroy",
+        cancelButtonText: "Cancel",
       })
 
       if (!value) return
