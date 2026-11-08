@@ -21,5 +21,25 @@ exec dbus-run-session -- sh -c '
   for d in xsettings a11y-settings keyboard media-keys sound; do
     if [ -x "/usr/libexec/gsd-$d" ]; then "/usr/libexec/gsd-$d" & fi
   done
-  exec gnome-shell --x11 --replace
+
+  # neko changes the resolution under the shell, and when it is drawn in
+  # software the shell keeps drawing at the old size. So it restarts when
+  # the size changes; windows belong to X and stay open meanwhile.
+  (
+    last=""
+    while sleep 1; do
+      size=$(xrandr --current 2>/dev/null | sed -n "s/.*current \([0-9]*\) x \([0-9]*\).*/\1x\2/p")
+      [ -n "$size" ] || continue
+      if [ -n "$last" ] && [ "$size" != "$last" ]; then
+        sleep 1
+        pkill -x gnome-shell
+      fi
+      last="$size"
+    done
+  ) &
+
+  while :; do
+    gnome-shell --x11 --replace
+    sleep 1
+  done
 '

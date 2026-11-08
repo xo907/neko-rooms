@@ -15,10 +15,13 @@ RUN set -eux; apt-get update; \
         desktop-base gnome-backgrounds adwaita-icon-theme fonts-cantarell \
         # software rendering, rooms have no GPU
         libgl1-mesa-dri \
+        # xrandr and pkill, to restart the shell when the screen is resized
+        x11-xserver-utils procps \
         dbus at-spi2-core dconf-cli sudo; \
     #
     # X must keep running as the neko user, see the kde image
-    apt-get remove -y xserver-xorg-legacy;     #
+    apt-get remove -y xserver-xorg-legacy; \
+    #
     # without systemd, services that only systemd can start (logind, localed
     # and friends) fail to launch, and the shell gives up when it asks for
     # them. Without their activation files the bus says they are unknown,
