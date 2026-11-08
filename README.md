@@ -96,7 +96,7 @@ The classic setups with Traefik from upstream still work: [traefik/](traefik/), 
 
 ## Android app
 
-**WatchParty** is a native app for any neko-rooms server: browse and join rooms, watch with chat, take control with touch, mouse or keyboard, raise your hand, react, RSVP to parties, manage your account and friends.
+**WatchParty** is a native app for any neko-rooms server: browse and join rooms, watch with chat, take control with touch, mouse or keyboard, put the room on a TV (HDMI, Chromecast, screen mirroring) with the phone as the remote, raise your hand, react, RSVP to parties, manage your account and friends.
 
 Download `WatchParty.apk` from the [latest release](https://github.com/xo907/neko-rooms/releases?q=android-v&expanded=true) on your phone, open it to install and enter your server's address. Source in [android/](android/).
 

@@ -202,6 +202,13 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
     var poke by remember { mutableLongStateOf(0L) }
     var members by remember { mutableStateOf(false) }
     var ctrl by remember { mutableStateOf(false) }
+    // a connected TV gets the video by itself, unless asked to mirror instead
+    val tv = rememberTvDisplay()
+    var tvShowing by remember { mutableStateOf(true) }
+    var casting by remember { mutableStateOf(false) }
+    LaunchedEffect(tv?.displayId) {
+        if (tv != null && tvShowing) Toast.makeText(context, "Showing on ${tv.name}", Toast.LENGTH_SHORT).show()
+    }
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val touch = st.touchSupported && touchPref
 
@@ -503,6 +510,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                                     HostLine(st)
                                     PlayingLine(ls.playing)
                                 }
+                                CastButton(tv, tvShowing, Color.White) { casting = true; poke++ }
                                 ChatButton(sideChat, unread, Color.White) { setChat(!sideChat) }
                             }
                             bar()
@@ -553,6 +561,7 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
                             AvatarStack(st.online.map { it.name }, photoOf, 24.dp, 3)
                         }
                     }
+                    CastButton(tv, tvShowing, MaterialTheme.colorScheme.onSurface) { casting = true }
                     ChatButton(portraitChat, unread, MaterialTheme.colorScheme.onSurface) { setChat(!portraitChat) }
                 }
                 val ratio = st.screenWidth.toFloat() / st.screenHeight.coerceAtLeast(1)
@@ -575,6 +584,18 @@ fun PlayerScreen(model: AppModel, name: String, invite: String?, nickname: Strin
 
         // hidden field that receives the on-screen keyboard
         if (keyboard && !pip) RemoteKeyboard(client, ctrl) { ctrl = false }
+    }
+
+    // a rewind plays on the phone, the TV then mirrors it instead of the live picture
+    if (tv != null && tvShowing && rewinding == null) TvVideo(tv, st.video)
+    if (casting) {
+        CastDialog(
+            tv = tv,
+            showing = tvShowing,
+            onShowing = { tvShowing = it },
+            link = model.api.roomLink(name, invite),
+            onDismiss = { casting = false },
+        )
     }
 
     if (members) {
