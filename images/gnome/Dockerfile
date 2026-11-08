@@ -18,7 +18,12 @@ RUN set -eux; apt-get update; \
         dbus at-spi2-core dconf-cli sudo; \
     #
     # X must keep running as the neko user, see the kde image
-    apt-get remove -y xserver-xorg-legacy; \
+    apt-get remove -y xserver-xorg-legacy;     #
+    # without systemd, services that only systemd can start (logind, localed
+    # and friends) fail to launch, and the shell gives up when it asks for
+    # them. Without their activation files the bus says they are unknown,
+    # which the shell treats as absent and carries on.
+    grep -l '^Exec=/bin/false' /usr/share/dbus-1/system-services/*.service /usr/share/dbus-1/services/*.service | xargs -r rm -f; \
     #
     # add user to sudoers
     usermod -aG sudo neko; \
