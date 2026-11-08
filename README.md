@@ -42,6 +42,7 @@ This is a fork of [m1k1o/neko-rooms](https://github.com/m1k1o/neko-rooms), the r
 
 **Running it**
 - **Sleep when empty**: rooms nobody is in stop after 30 minutes and wake up when someone joins.
+- **GNOME desktop rooms**: a Debian GNOME image built here, `ghcr.io/xo907/neko-rooms/gnome`, next to neko's browsers, XFCE and KDE. [How it works](images/gnome/README.md)
 - **Room templates**: YouTube, Twitch, music or movie night rooms with a start page, and ad blocking when storage is on.
 - **Update button**: pulls the newest image of a room and recreates it with the same settings. Images that are not there yet are pulled when a room needs them.
 - **API tokens** for scripts (`Authorization: Bearer ...`), see [docs/api.md](docs/api.md).

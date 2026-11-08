@@ -1,0 +1,55 @@
+name: GNOME room image
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'images/gnome/**'
+      - '.github/workflows/image_gnome.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build and push
+    runs-on: ubuntu-latest
+    env:
+      # the neko version rooms run, see NekoVersion in internal/config/room.go
+      NEKO_VERSION: '3.1.6'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # image names must be lowercase
+      - name: Image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/gnome" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: images/gnome
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: BASE_IMAGE=ghcr.io/m1k1o/neko/base:${{ env.NEKO_VERSION }}
+          tags: |
+            ${{ steps.name.outputs.image }}:${{ env.NEKO_VERSION }}
+            ${{ steps.name.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=A GNOME desktop for neko rooms
+            org.opencontainers.image.licenses=Apache-2.0
+            net.m1k1o.neko.api-version=3
+          cache-from: type=gha,scope=gnome
+          cache-to: type=gha,scope=gnome,mode=max
