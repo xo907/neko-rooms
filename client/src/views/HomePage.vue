@@ -1,94 +1,104 @@
 <template>
   <div class="nr-home">
     <!-- hero -->
-    <section v-if="showHero" class="nr-hero">
+    <section v-if="showHero" class="nr-hero nr-container">
       <div v-if="home.hero_image" class="nr-hero-image" :style="heroImageStyle" />
-      <div class="nr-hero-inner nr-rise">
-        <div class="nr-eyebrow mb-6">
-          <span class="nr-dot" />
-          <span>{{ liveRooms.length }} live {{ liveRooms.length === 1 ? 'room' : 'rooms' }}</span>
-          <span class="nr-eyebrow-sep" />
-          <span>{{ totalViewers }} watching</span>
+      <div class="nr-hero-grid" :class="{ 'has-parties': upcoming.length }">
+        <div class="nr-hero-copy nr-rise">
+          <span class="nr-eyebrow">
+            <span class="nr-dot" />{{ liveRooms.length }} live {{ liveRooms.length === 1 ? 'room' : 'rooms' }} · {{ totalViewers }} watching
+          </span>
+          <h1 class="nr-hero-title">{{ expand(home.hero_title) }}</h1>
+          <p class="nr-hero-subtitle">{{ expand(home.hero_subtitle) }}</p>
+          <div class="nr-hero-actions">
+            <button type="button" class="nr-btn is-primary is-lg" @click="create">{{ home.cta_label || 'Create a room' }}</button>
+            <button type="button" class="nr-btn is-secondary is-lg" @click="scrollToRooms">Browse rooms</button>
+          </div>
         </div>
-        <h1 class="nr-hero-title nr-display">{{ expand(home.hero_title) }}</h1>
-        <p class="nr-hero-subtitle">{{ expand(home.hero_subtitle) }}</p>
-        <div class="nr-hero-actions">
-          <v-btn large color="primary" depressed @click="create">
-            {{ home.cta_label || 'Create a room' }}
-          </v-btn>
-          <v-btn large outlined @click="scrollToRooms">
-            Browse rooms
-          </v-btn>
-        </div>
+
+        <aside v-if="upcoming.length" class="nr-upnext nr-surface nr-rise" aria-label="Upcoming watch parties">
+          <div class="nr-upnext-head"><span class="nr-label">Up next</span></div>
+          <router-link
+            v-for="r in upcoming.slice(0, 3)"
+            :key="'up' + r.id"
+            :to="{ name: 'room', params: { name: r.name } }"
+            class="nr-upnext-row"
+          >
+            <span class="nr-upnext-date">
+              <span class="nr-label">{{ partyDay(r) }}</span>
+              <span class="nr-mono">{{ partyDate(r) }}</span>
+            </span>
+            <span class="nr-upnext-copy">
+              <span class="nr-upnext-title">{{ r.title }}</span>
+              <span class="nr-mono nr-upnext-meta">{{ partyTime(r) }}<template v-if="r.category"> · {{ r.category }}</template> · {{ r.rsvps }} going</span>
+            </span>
+            <span class="nr-status" :class="r.going ? 'is-online' : 'is-plain'">{{ r.going ? 'Going' : 'RSVP' }}</span>
+          </router-link>
+        </aside>
       </div>
     </section>
 
-    <div ref="rooms" class="nr-wrap" :class="showHero ? 'pt-2' : 'pt-10'">
-      <div class="nr-layout">
-        <div class="nr-main">
-          <!-- page heading for signed in users -->
-          <div v-if="!showHero" class="nr-page-head nr-rise">
-            <h1 class="nr-page-title nr-heading">{{ branding.tagline || 'Rooms' }}</h1>
-            <div class="nr-page-meta">
-              <span class="nr-dot" />{{ liveRooms.length }} live · {{ totalViewers }} watching
-            </div>
-          </div>
-
-          <!-- toolbar -->
-          <div class="nr-toolbar">
-            <div class="nr-filters" v-if="home.show_categories && categories.length">
-              <button type="button" class="nr-filter" :class="{ 'is-active': !category }" @click="category = null">All</button>
-              <button
-                v-for="c in categories"
-                :key="c"
-                type="button"
-                class="nr-filter"
-                :class="{ 'is-active': category === c }"
-                @click="category = category === c ? null : c"
-              >{{ c }}</button>
-            </div>
-            <div class="nr-toolbar-end">
-              <label v-if="home.show_search" class="nr-search">
-                <v-icon small>mdi-magnify</v-icon>
-                <input v-model="search" type="search" placeholder="Search rooms, people…" aria-label="Search rooms">
-              </label>
-              <v-btn v-if="user && canCreate" color="primary" depressed @click="create">
-                <v-icon left small>mdi-plus</v-icon>New room
-              </v-btn>
-            </div>
-          </div>
-
-          <div v-if="!loaded" class="text-center py-16">
-            <v-progress-circular indeterminate color="primary" size="32" width="2" />
-          </div>
-
-          <template v-else>
-            <section v-for="section in sections" :key="section.key" class="mb-10">
-              <h2 class="nr-section-title">{{ section.label }} <span>{{ section.rooms.length }}</span></h2>
-              <div class="nr-grid" :class="{ 'nr-grid--compact': home.card_style === 'compact' }">
-                <RoomCard
-                  v-for="room in section.rooms"
-                  :key="section.key + room.id"
-                  :room="room"
-                  :tick="tick"
-                  :compact="home.card_style === 'compact'"
-                  @join="join"
-                />
-              </div>
-            </section>
-
-            <div v-if="!sections.length" class="nr-empty">
-              <div class="nr-empty-icon"><v-icon>mdi-sofa-outline</v-icon></div>
-              <div class="nr-empty-title">{{ search || category ? 'No rooms match your search.' : (home.empty_text || 'No rooms yet.') }}</div>
-              <v-btn v-if="!search && !category" color="primary" depressed class="mt-5" @click="create">
-                {{ home.cta_label || 'Create a room' }}
-              </v-btn>
-              <v-btn v-else text class="mt-3" @click="search = ''; category = null">Clear filters</v-btn>
-            </div>
-          </template>
-        </div>
-
+    <div ref="rooms" class="nr-wrap nr-container" :class="{ 'is-headless': !showHero }">
+      <!-- page heading for signed in users -->
+      <div v-if="!showHero" class="nr-page-head nr-rise">
+        <h1 class="nr-page-title">{{ branding.tagline || 'Rooms' }}</h1>
+        <span class="nr-eyebrow"><span class="nr-dot" />{{ liveRooms.length }} live · {{ totalViewers }} watching</span>
       </div>
+
+      <!-- toolbar -->
+      <div class="nr-toolbar">
+        <div class="nr-filters" v-if="home.show_categories && categories.length" role="group" aria-label="Category">
+          <button type="button" class="nr-filter" :class="{ 'is-active': !category }" @click="category = null">All</button>
+          <button
+            v-for="c in categories"
+            :key="c"
+            type="button"
+            class="nr-filter"
+            :class="{ 'is-active': category === c }"
+            @click="category = category === c ? null : c"
+          >{{ c }}</button>
+        </div>
+        <div class="nr-toolbar-end">
+          <label v-if="home.show_search" class="nr-search">
+            <v-icon small>mdi-magnify</v-icon>
+            <input v-model="search" type="search" placeholder="Search rooms, people…" aria-label="Search rooms">
+          </label>
+        </div>
+      </div>
+
+      <div v-if="!loaded" class="nr-grid" aria-busy="true">
+        <div v-for="n in 3" :key="'sk' + n" class="nr-skeleton">
+          <div class="nr-skeleton-thumb" />
+          <div class="nr-skeleton-line" />
+          <div class="nr-skeleton-line is-short" />
+        </div>
+      </div>
+
+      <template v-else>
+        <section v-for="section in sections" :key="section.key" class="nr-section">
+          <h2 class="nr-section-title">{{ section.label }} <span>{{ section.rooms.length }}</span></h2>
+          <div class="nr-grid" :class="{ 'nr-grid--compact': home.card_style === 'compact' }">
+            <RoomCard
+              v-for="room in section.rooms"
+              :key="section.key + room.id"
+              :room="room"
+              :tick="tick"
+              :compact="home.card_style === 'compact'"
+              @join="join"
+            />
+          </div>
+        </section>
+
+        <div v-if="!sections.length" class="nr-empty-state">
+          <div class="nr-empty-icon"><v-icon>{{ search || category ? 'mdi-magnify' : 'mdi-television-play' }}</v-icon></div>
+          <h2>{{ search || category ? 'No rooms match your search' : (home.empty_text || 'No watch-party rooms running') }}</h2>
+          <p v-if="!search && !category">A room is a shared browser in its own container. Spin one up and send the link around.</p>
+          <button v-if="!search && !category" type="button" class="nr-btn is-primary" @click="create">
+            <v-icon small>mdi-plus</v-icon>{{ home.cta_label || 'Create a room' }}
+          </button>
+          <button v-else type="button" class="nr-btn is-secondary" @click="search = ''; category = null">Clear filters</button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -96,79 +106,95 @@
 <style lang="scss" scoped>
 .nr-hero {
   position: relative;
-  padding: clamp(64px, 12vh, 128px) 16px clamp(48px, 8vh, 88px);
-  text-align: center;
-  overflow: hidden;
+  padding-top: clamp(48px, 10vh, 96px);
 }
 .nr-hero-image {
   position: absolute;
   inset: 0;
   background-size: cover;
   background-position: center;
-  opacity: .28;
-  mask-image: radial-gradient(ellipse 70% 70% at 50% 30%, #000 30%, transparent 75%);
-  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 30%, #000 30%, transparent 75%);
+  opacity: .16;
+  pointer-events: none;
 }
-.nr-hero-inner {
+.nr-hero-grid {
   position: relative;
-  max-width: 760px;
-  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 48px;
+  align-items: end;
+  padding-bottom: clamp(40px, 7vh, 64px);
+  border-bottom: 1px solid var(--border-subtle);
+  &.has-parties { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
 }
-.nr-eyebrow-sep {
-  width: 1px;
-  height: 12px;
-  background: var(--nr-line-strong);
+.nr-hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
 }
 .nr-hero-title {
-  font-size: clamp(2.8rem, 7.5vw, 5.2rem);
-  line-height: .98;
-  margin: 0 0 20px;
-  color: var(--nr-text);
+  margin: 0;
+  max-width: 14ch;
+  font-size: clamp(44px, 6vw, 72px) !important;
+  font-weight: 600 !important;
+  line-height: .95 !important;
+  letter-spacing: -0.045em !important;
+  color: var(--text-primary);
 }
 .nr-hero-subtitle {
-  font-size: clamp(1rem, 1.6vw, 1.125rem);
-  line-height: 1.6;
-  color: var(--nr-muted);
-  max-width: 520px;
-  margin: 0 auto 32px;
+  margin: 0;
+  max-width: 460px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--text-secondary);
 }
 .nr-hero-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
+  gap: 8px;
 }
+
+.nr-upnext { display: flex; flex-direction: column; overflow: hidden; }
+.nr-upnext-head { padding: 12px 16px; }
+.nr-upnext-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-primary) !important;
+  text-decoration: none;
+  transition: background-color var(--dur) var(--ease);
+  &:hover { background: rgba(255, 255, 255, .02); }
+}
+.nr-upnext-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  .nr-label { font-size: 10px !important; }
+  .nr-mono { font-size: 18px; font-weight: 500; }
+}
+.nr-upnext-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.nr-upnext-title { font-size: 14px; font-weight: 500; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nr-upnext-meta { font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .nr-wrap {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 0 16px 64px;
+  padding-top: 32px;
+  padding-bottom: 64px;
+  &.is-headless { padding-top: 48px; }
 }
-.nr-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 32px;
-}
-
 .nr-page-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px 24px;
-  margin-bottom: 24px;
-}
-.nr-page-title {
-  font-size: clamp(1.8rem, 3.5vw, 2.4rem);
-  line-height: 1.1;
-  margin: 0;
-}
-.nr-page-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--nr-muted);
+  margin-bottom: 32px;
 }
 
 .nr-toolbar {
@@ -176,56 +202,48 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 28px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--nr-line);
+  gap: 16px;
+  margin-bottom: 32px;
 }
 .nr-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .nr-filter {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--nr-line);
-  background: var(--nr-hover);
-  color: var(--nr-muted);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font: 500 13px var(--font-sans);
   cursor: pointer;
-  transition: color .18s, background-color .18s, border-color .18s, transform .18s;
-  &:hover { color: var(--nr-text); border-color: var(--nr-line-strong); }
-  &:active { transform: scale(.97); }
-  &.is-active {
-    background: var(--nr-primary);
-    border-color: var(--nr-primary);
-    color: var(--nr-on-primary);
-  }
+  transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  &:hover { color: var(--text-primary); border-color: var(--border-hover); }
+  &:active { transform: scale(.985); }
+  &.is-active { background: var(--bg-surface-3); border-color: var(--border-hover); color: var(--text-primary); }
 }
 .nr-toolbar-end {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-left: auto;
 }
 .nr-search {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
-  width: min(300px, 60vw);
+  height: 38px;
+  width: min(320px, 60vw);
   min-width: 0;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--nr-line);
-  background: var(--nr-hover);
-  transition: border-color .18s, box-shadow .18s;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-2);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
   cursor: text;
-  .v-icon { color: var(--nr-subtle) !important; }
+  .v-icon { color: var(--text-tertiary) !important; }
   input {
     flex: 1;
     width: 100%;
@@ -233,46 +251,44 @@
     border: 0;
     outline: 0;
     background: transparent;
-    color: var(--nr-text);
-    font: inherit;
-    font-size: 13.5px;
-    &::placeholder { color: var(--nr-subtle); }
+    color: var(--text-primary);
+    font: 400 13.5px var(--font-sans);
+    &::placeholder { color: var(--text-tertiary); }
     &::-webkit-search-cancel-button { filter: grayscale(1); opacity: .5; }
   }
-  &:focus-within {
-    border-color: color-mix(in srgb, var(--nr-primary) 55%, transparent);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--nr-primary) 12%, transparent);
-  }
+  &:hover { border-color: var(--border-hover); }
+  &:focus-within { border-color: var(--border-focus); box-shadow: var(--focus-ring); }
 }
 
+.nr-section { margin-bottom: 48px; }
 .nr-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
-  &.nr-grid--compact { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+  &.nr-grid--compact { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 }
 
-.nr-empty {
-  text-align: center;
-  padding: 64px 24px;
-  border: 1px dashed var(--nr-line-strong);
-  border-radius: calc(var(--nr-radius) * 1.5);
+// loading skeletons keep the grid's shape, so nothing jumps when rooms arrive
+.nr-skeleton {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-1);
+  overflow: hidden;
+  padding-bottom: 16px;
 }
-.nr-empty-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 16px;
-  border-radius: 50%;
-  border: 1px solid var(--nr-line);
-  background: var(--nr-hover);
-  .v-icon { color: var(--nr-muted) !important; }
+.nr-skeleton-thumb { aspect-ratio: 16 / 9; background: var(--bg-surface-2); border-bottom: 1px solid var(--border-subtle); animation: nr-pulse 1.6s ease-in-out infinite; }
+.nr-skeleton-line {
+  height: 10px;
+  margin: 16px 16px 0;
+  width: 60%;
+  border-radius: 4px;
+  background: var(--bg-surface-2);
+  animation: nr-pulse 1.6s ease-in-out infinite;
+  &.is-short { width: 35%; margin-top: 10px; }
 }
-.nr-empty-title {
-  color: var(--nr-muted);
-  font-size: 15px;
+
+@media (max-width: 960px) {
+  .nr-hero-grid.has-parties { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
   .nr-toolbar-end { width: 100%; }
@@ -388,6 +404,25 @@ export default class HomePage extends Vue {
     ]
     sections.push(parties)
     return sections.filter(s => s.rooms.length)
+  }
+
+  // watch parties that have not started, soonest first, for the hero
+  get upcoming(): Room[] {
+    return this.rooms
+      .filter(r => !!r.scheduled_at && !r.ready)
+      .sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || ''))
+  }
+
+  partyDay(r: Room): string {
+    return r.scheduled_at ? new Date(r.scheduled_at).toLocaleDateString(undefined, { weekday: 'short' }) : ''
+  }
+
+  partyDate(r: Room): string {
+    return r.scheduled_at ? String(new Date(r.scheduled_at).getDate()) : ''
+  }
+
+  partyTime(r: Room): string {
+    return r.scheduled_at ? new Date(r.scheduled_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''
   }
 
   expand(s: string) {

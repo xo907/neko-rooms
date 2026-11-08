@@ -4,20 +4,10 @@
 // Import Vendor
 @import "vendor/sweetalert2";
 
-// Modern layer
-@import "modern";
+// Design tokens and the look built on them
+@import "tokens";
+@import "deck";
 
 html, body {
-  -webkit-font-smoothing: antialiased;
   font-size: $text-size;
 }
-
-// shared helpers
-.nr-clickable { cursor: pointer; }
-.nr-gradient-text {
-  background: linear-gradient(90deg, var(--nr-text), color-mix(in srgb, var(--nr-text) 55%, var(--nr-primary)));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.nr-page-title { font-weight: 600; letter-spacing: -0.02em; }

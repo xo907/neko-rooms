@@ -122,6 +122,26 @@ export function applyBranding(vuetify: Framework, b: Branding, dark: boolean) {
 
   let css = `
 :root {
+  --bg-canvas: ${p.background};
+  --bg-surface-1: ${p.surface};
+  --bg-surface-2: color-mix(in srgb, ${p.surface} 96.5%, ${p.text});
+  --bg-surface-3: color-mix(in srgb, ${p.surface} 92.5%, ${p.text});
+  --text-primary: ${p.text};
+  --text-secondary: color-mix(in srgb, ${p.text} 66%, ${p.background});
+  --text-tertiary: color-mix(in srgb, ${p.text} 55%, ${p.background});
+  --text-disabled: color-mix(in srgb, ${p.text} 36%, ${p.background});
+  --border-subtle: color-mix(in srgb, ${p.text} 7%, transparent);
+  --border-hover: color-mix(in srgb, ${p.text} 15%, transparent);
+  --border-focus: color-mix(in srgb, ${p.text} 35%, transparent);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, ${p.text} 6%, transparent);
+  --accent-primary: ${p.primary};
+  --accent-ink: ${onColor(p.primary)};
+  --font-sans: ${t.font_family || "'Geist', sans-serif"};
+  --radius-lg: ${radius};
+  --radius-md: ${Math.round(t.border_radius * 0.8)}px;
+  --radius-sm: ${Math.round(t.border_radius * 0.6)}px;
+
+  /* older names, still used by some components */
   --nr-primary: ${p.primary};
   --nr-accent: ${p.accent};
   --nr-bg: ${p.background};
@@ -134,70 +154,34 @@ export function applyBranding(vuetify: Framework, b: Branding, dark: boolean) {
   --nr-footer-text: ${p.footer_text};
   --nr-drawer: ${p.drawer};
   --nr-radius: ${radius};
-  --nr-font: ${t.font_family || 'Roboto, sans-serif'};
-  --nr-heading-font: ${heading || 'Roboto, sans-serif'};
+  --nr-font: var(--font-sans);
+  --nr-heading-font: ${heading ? heading : 'var(--font-sans)'};
   --nr-font-size: ${t.font_size || 14}px;
-  --nr-on-primary: ${onColor(p.primary)};
+  --nr-on-primary: var(--accent-ink);
   --nr-on-accent: ${onColor(p.accent)};
-  --nr-line: color-mix(in srgb, var(--nr-text) 8%, transparent);
-  --nr-line-strong: color-mix(in srgb, var(--nr-text) 14%, transparent);
-  --nr-hover: color-mix(in srgb, var(--nr-text) 5%, transparent);
-  --nr-press: color-mix(in srgb, var(--nr-text) 8%, transparent);
-  --nr-muted: color-mix(in srgb, var(--nr-text) 62%, var(--nr-bg));
-  --nr-subtle: color-mix(in srgb, var(--nr-text) 42%, var(--nr-bg));
-  --nr-glass: color-mix(in srgb, var(--nr-surface) 72%, transparent);
-  --nr-glow: color-mix(in srgb, var(--nr-primary) 35%, transparent);
+  --nr-line: var(--border-subtle);
+  --nr-line-strong: var(--border-hover);
+  --nr-hover: var(--bg-surface-2);
+  --nr-press: var(--bg-surface-3);
+  --nr-muted: var(--text-secondary);
+  --nr-subtle: var(--text-tertiary);
+  --nr-glass: var(--bg-surface-1);
+  --nr-glow: transparent;
 }
-html, body { background: var(--nr-bg); }
+html, body { background: var(--bg-canvas); }
+.v-application { font-size: var(--nr-font-size); }
 .v-application, .v-application .text-h1, .v-application .text-h2, .v-application .text-h3,
 .v-application .text-h4, .v-application .text-h5, .v-application .text-h6,
 .v-application .headline, .v-application .title, .v-application .body-1, .v-application .body-2,
 .v-application .text-body-1, .v-application .text-body-2, .v-application .subtitle-1, .v-application .subtitle-2,
 .v-application .caption, .v-application .text-caption, .v-application .text-subtitle-1, .v-application .text-subtitle-2 {
-  font-family: var(--nr-font) !important;
+  font-family: var(--font-sans) !important;
 }
-.v-application h1, .v-application h2, .v-application h3, .v-application .nr-heading,
-.v-application .text-h3, .v-application .text-h4, .v-application .text-h5, .v-application .text-h6 {
+.v-application h1, .v-application h2, .v-application h3, .v-application .nr-heading {
   font-family: var(--nr-heading-font) !important;
 }
-.v-application { font-size: var(--nr-font-size); }
-.v-application.theme--dark, .v-application.theme--light { background: var(--nr-bg) !important; color: var(--nr-text) !important; }
-.v-application .theme--dark.v-card, .v-application .theme--light.v-card {
-  background-color: var(--nr-glass) !important;
-}
-.v-application .theme--dark.v-sheet:not(.v-app-bar):not(.v-footer):not(.v-navigation-drawer):not(.transparent):not(.v-card),
-.v-application .theme--light.v-sheet:not(.v-app-bar):not(.v-footer):not(.v-navigation-drawer):not(.transparent):not(.v-card),
-.v-application .theme--dark.v-list, .v-application .theme--light.v-list,
-.v-application .theme--dark.v-data-table, .v-application .theme--light.v-data-table,
-.v-application .theme--dark.v-expansion-panels .v-expansion-panel, .v-application .theme--light.v-expansion-panels .v-expansion-panel,
-.v-application .theme--dark.v-tabs-items, .v-application .theme--light.v-tabs-items,
-.v-application .theme--dark.v-tabs > .v-tabs-bar, .v-application .theme--light.v-tabs > .v-tabs-bar,
-.theme--dark.v-menu__content .v-list, .theme--light.v-menu__content .v-list,
-.v-dialog .theme--dark.v-card, .v-dialog .theme--light.v-card {
-  background-color: var(--nr-surface) !important;
-}
-.v-application .v-card > .v-list, .v-application .v-card .v-data-table,
-.v-application .v-card .v-expansion-panels .v-expansion-panel {
-  background-color: transparent !important;
-}
-.v-application .nr-appbar.v-app-bar { background-color: color-mix(in srgb, var(--nr-appbar) 72%, transparent) !important; color: var(--nr-appbar-text) !important; backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); border-bottom: 1px solid var(--nr-line) !important; }
-.v-application .nr-appbar .nr-appbar-text { color: var(--nr-appbar-text) !important; }
-.v-application .nr-footer.v-footer { background-color: transparent !important; color: var(--nr-footer-text) !important; }
-.v-application .nr-footer a { color: var(--nr-footer-text) !important; }
-.v-application .nr-drawer.v-navigation-drawer { background-color: var(--nr-drawer) !important; }
-.v-application .nr-drawer.v-navigation-drawer .v-list { background-color: transparent !important; }
-.v-application .v-btn:not(.v-btn--round):not(.v-btn--fab):not(.v-btn--icon):not(.v-btn--tile) {
-  border-radius: calc(var(--nr-radius) * 4) !important;
-}
-.v-application .v-card, .v-application .v-sheet.nr-rounded, .v-dialog, .v-menu__content,
-.v-application .v-text-field--outlined fieldset, .v-application .v-alert,
-.v-application .v-text-field--solo .v-input__slot, .v-application .v-data-table {
-  border-radius: var(--nr-radius) !important;
-}
 `
-  if (!t.button_uppercase) {
-    css += `.v-application .v-btn, .v-application .v-tab { text-transform: none !important; letter-spacing: normal !important; }\n`
-  }
+  // buttons and tabs are never uppercase in this look, see _deck.scss
   if (t.font_file && t.font_family) {
     css += `@font-face { font-family: "${firstFamily(t.font_family).replace(/"/g, '')}"; src: url("${t.font_file.replace(/"/g, '')}"); font-display: swap; }\n`
   }

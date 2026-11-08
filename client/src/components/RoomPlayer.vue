@@ -21,9 +21,22 @@
       <div v-if="!ready" class="nr-curtain">
         <div class="nr-curtain-image" :style="curtainStyle" />
         <div class="nr-curtain-body">
-          <span class="nr-spinner" />
-          <div v-if="mode === 'full'" class="nr-curtain-title">{{ title }}</div>
-          <div v-if="mode === 'full'" class="nr-curtain-note">Joining room…</div>
+          <template v-if="mode === 'full'">
+            <span class="nr-curtain-eyebrow">Joining</span>
+            <div class="nr-curtain-title">{{ title }}</div>
+            <div v-if="room && room.now_playing" class="nr-curtain-note">{{ room.now_playing }}</div>
+            <ol class="nr-steps" aria-live="polite">
+              <li v-for="(step, i) in steps" :key="step" :class="{ 'is-done': i < phase, 'is-active': i === phase }">
+                <span class="nr-step-mark">
+                  <v-icon v-if="i < phase" x-small>mdi-check</v-icon>
+                  <span v-else-if="i === phase" class="nr-spinner" />
+                </span>
+                <span>{{ step }}</span>
+              </li>
+            </ol>
+            <button type="button" class="nr-curtain-cancel" @click="leave">Cancel</button>
+          </template>
+          <span v-else class="nr-spinner" />
         </div>
       </div>
     </transition>
@@ -31,28 +44,27 @@
     <!-- sits on the empty side of the neko header, reads as one bar; its own
          background also covers the neko logo should the frame not be styled -->
     <div v-if="mode === 'full'" class="nr-bar" :style="barStyle">
-      <button type="button" class="nr-bar-btn" title="Back to the site, keep watching" @click="back">
-        <v-icon>mdi-chevron-left</v-icon>
+      <button type="button" class="nr-bar-btn" title="Back to the site, keep watching" aria-label="Back to the site, keep watching" @click="back">
+        <v-icon small>mdi-chevron-left</v-icon>
       </button>
-      <span class="nr-bar-sep" />
       <div class="nr-bar-title">
         <span class="nr-bar-name">{{ title }}</span>
         <span v-if="room && room.ready" class="nr-bar-live">
-          <span class="nr-dot" />{{ room.viewers }} watching
+          <span class="nr-dot" />{{ room.viewers }} watching<template v-if="elapsed"> · {{ elapsed }}</template>
         </span>
       </div>
+      <span class="flex-grow-1" />
       <div v-if="members.length" class="nr-bar-members d-none d-md-flex">
         <UserAvatar v-for="m in members" :key="m" :name="m" :src="room && room.avatars ? room.avatars[m] : undefined" :size="24" ring tooltip />
       </div>
-      <button type="button" class="nr-bar-btn" title="Continue on another device" @click="handoff">
-        <v-icon small>mdi-cellphone-arrow-down</v-icon>
+      <span class="nr-bar-sep d-none d-md-block" />
+      <button type="button" class="nr-bar-btn" title="Continue on another device" aria-label="Continue on another device" @click="handoff">
+        <v-icon small>mdi-cellphone</v-icon>
       </button>
-      <button type="button" class="nr-bar-btn" :title="copied ? 'Link copied' : 'Copy link'" @click="share">
+      <button type="button" class="nr-bar-btn" :class="{ 'is-done': copied }" :title="copied ? 'Link copied' : 'Copy link'" :aria-label="copied ? 'Link copied' : 'Copy link'" @click="share">
         <v-icon small>{{ copied ? 'mdi-check' : 'mdi-link-variant' }}</v-icon>
       </button>
-      <button type="button" class="nr-bar-btn nr-bar-btn--leave" title="Leave the room" @click="leave">
-        <v-icon small>mdi-logout-variant</v-icon><span class="d-none d-sm-inline">Leave</span>
-      </button>
+      <button type="button" class="nr-bar-leave" title="Leave the room" @click="leave">Leave</button>
     </div>
 
     <!-- mini player -->
@@ -64,33 +76,32 @@
         <span class="text-truncate">{{ title }}</span>
       </div>
       <div class="nr-mini-actions">
-        <button type="button" title="Back to room" @click.stop="expand"><v-icon small>mdi-arrow-expand</v-icon></button>
-        <button type="button" title="Leave room" @click.stop="leave"><v-icon small>mdi-close</v-icon></button>
+        <button type="button" title="Back to room" aria-label="Back to room" @click.stop="expand"><v-icon small>mdi-arrow-expand</v-icon></button>
+        <button type="button" title="Leave room" aria-label="Leave room" @click.stop="leave"><v-icon small>mdi-close</v-icon></button>
       </div>
     </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
-$ease: cubic-bezier(.2, .8, .2, 1);
+$ease: cubic-bezier(.22, 1, .36, 1);
 
 .nr-player {
   position: fixed;
   z-index: 100;
   overflow: hidden;
-  background: var(--nr-bg);
+  background: #000;
 }
 .nr-player--full {
   inset: 0;
 }
 .nr-player--mini {
-  right: 20px;
-  bottom: 20px;
+  right: 16px;
+  bottom: 16px;
   width: clamp(240px, 26vw, 380px);
   aspect-ratio: 16 / 9;
-  border-radius: 16px;
-  background: #000;
-  box-shadow: 0 0 0 1px var(--nr-line-strong), 0 30px 70px -20px rgba(0, 0, 0, .8);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 0 1px var(--border-hover), 0 24px 60px -20px rgba(0, 0, 0, .8);
   cursor: pointer;
   .nr-frame { pointer-events: none; }
   &:hover .nr-mini-ui { opacity: 1; }
@@ -106,7 +117,7 @@ $ease: cubic-bezier(.2, .8, .2, 1);
   height: 100%;
   border: 0;
   opacity: 0;
-  transition: opacity .5s $ease;
+  transition: opacity .4s $ease;
   &.is-ready { opacity: 1; }
 }
 
@@ -115,17 +126,18 @@ $ease: cubic-bezier(.2, .8, .2, 1);
   inset: 0;
   z-index: 1;
   overflow: hidden;
+  background: #000;
 }
 .nr-curtain-image {
   position: absolute;
-  inset: -40px;
+  inset: -60px;
   background-size: cover;
   background-position: center;
-  transition: filter .7s $ease, transform .7s $ease;
+  transition: filter .6s $ease, transform .6s $ease;
 }
 .is-settled .nr-curtain-image {
-  filter: blur(22px) brightness(.45) saturate(1.2);
-  transform: scale(1.06);
+  filter: blur(28px) brightness(.35) saturate(1.1);
+  transform: scale(1.04);
 }
 .nr-curtain-body {
   position: absolute;
@@ -134,35 +146,93 @@ $ease: cubic-bezier(.2, .8, .2, 1);
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 8px;
+  padding: 24px;
   text-align: center;
-  color: #fff;
+  color: var(--text-primary);
+  background: rgba(9, 9, 11, .55);
   opacity: 0;
-  transition: opacity .4s $ease .15s;
+  transition: opacity .3s $ease .1s;
 }
 .is-settled .nr-curtain-body { opacity: 1; }
+.nr-curtain-eyebrow {
+  font: 500 11.5px var(--font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
 .nr-curtain-title {
   max-width: min(80vw, 640px);
-  font-family: 'Instrument Serif', var(--nr-heading-font), Georgia, serif;
-  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-family: var(--font-sans);
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 600;
   line-height: 1.05;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.04em;
 }
 .nr-curtain-note {
-  font-size: 13px;
-  color: rgba(255, 255, 255, .7);
+  max-width: min(80vw, 520px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.nr-steps {
+  width: min(380px, 100%);
+  margin: 16px 0 8px;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  background: rgba(17, 17, 20, .88);
+  overflow: hidden;
+  text-align: left;
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 36px;
+    padding: 0 16px;
+    border-top: 1px solid var(--border-subtle);
+    font: 400 12.5px var(--font-mono);
+    color: var(--text-tertiary);
+    &:first-child { border-top: 0; }
+    &.is-active { color: var(--text-primary); }
+    &.is-done { color: var(--text-secondary); }
+  }
+}
+.nr-step-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  .v-icon { color: var(--status-online) !important; }
 }
 .nr-spinner {
-  width: 22px;
-  height: 22px;
+  display: inline-block;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, .2);
-  border-top-color: var(--nr-primary);
+  border: 2px solid var(--border-hover);
+  border-top-color: var(--text-primary);
   animation: nr-spin .9s linear infinite;
 }
-@keyframes nr-spin { to { transform: rotate(360deg); } }
+.nr-curtain-cancel {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-hover);
+  background: transparent;
+  color: var(--text-secondary);
+  font: 500 13px var(--font-sans);
+  cursor: pointer;
+  transition: color var(--dur) $ease, border-color var(--dur) $ease;
+  &:hover { color: var(--text-primary); border-color: var(--border-focus); }
+}
 
-.nr-curtain-leave-active { transition: opacity .5s $ease; }
+.nr-curtain-leave-active { transition: opacity .4s $ease; }
 .nr-curtain-leave-to { opacity: 0; }
 
 .nr-bar {
@@ -170,55 +240,60 @@ $ease: cubic-bezier(.2, .8, .2, 1);
   z-index: 2;
   top: 0;
   left: 0;
-  height: 51px; // the neko header border stays visible below
+  height: 55px; // the neko header border stays visible below
   min-width: 200px; // wider than the neko logo
   max-width: calc(100% - 160px);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  background: var(--nr-bg);
-  color: var(--nr-text);
-  animation: nr-bar-in .5s $ease .2s both;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  animation: nr-bar-in .4s $ease .15s both;
 }
-@keyframes nr-bar-in { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes nr-bar-in { from { opacity: 0; } }
 
-// same size and shape as the neko header buttons on the right
 .nr-bar-btn {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-width: 34px;
+  width: 34px;
   height: 34px;
-  padding: 0 8px;
-  border-radius: 10px;
-  color: var(--nr-muted);
-  font-size: 13px;
-  font-weight: 500;
-  transition: background-color .18s, color .18s;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: background-color var(--dur) $ease, color var(--dur) $ease;
   .v-icon { color: inherit !important; }
-  &:hover, &:focus-visible { background: var(--nr-hover); color: var(--nr-text); }
+  &:hover, &:focus-visible { background: var(--bg-surface-2); color: var(--text-primary); }
+  &.is-done { color: var(--status-online); }
 }
-.nr-bar-btn--leave:hover, .nr-bar-btn--leave:focus-visible {
-  background: color-mix(in srgb, #f87171 12%, transparent);
-  color: #fca5a5;
+.nr-bar-leave {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  margin-left: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
+  font: 500 13px var(--font-sans);
+  transition: background-color var(--dur) $ease, border-color var(--dur) $ease, color var(--dur) $ease;
+  &:hover, &:focus-visible { color: var(--status-danger-ink); border-color: rgba(239, 68, 68, .35); background: rgba(239, 68, 68, .08); }
 }
 .nr-bar-sep {
   flex-shrink: 0;
   width: 1px;
-  height: 18px;
+  height: 20px;
   margin: 0 4px;
-  background: var(--nr-line-strong);
+  background: var(--border-subtle);
 }
 .nr-bar-title {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 4px;
   min-width: 0;
-  margin-right: 6px;
-  line-height: 1.2;
+  margin-left: 4px;
 }
 .nr-bar-name {
   overflow: hidden;
@@ -226,22 +301,22 @@ $ease: cubic-bezier(.2, .8, .2, 1);
   text-overflow: ellipsis;
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
 }
 .nr-bar-live {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
-  font-size: 11.5px;
-  color: var(--nr-muted);
+  font: 400 11px var(--font-mono);
+  color: var(--text-tertiary);
   white-space: nowrap;
-  .nr-dot { width: 5px; height: 5px; }
+  line-height: 1;
+  .nr-dot { width: 6px; height: 6px; }
 }
 .nr-bar-members {
   flex-shrink: 0;
   align-items: center;
-  margin-right: 4px;
   > * + * { margin-left: -6px; }
 }
 
@@ -253,11 +328,10 @@ $ease: cubic-bezier(.2, .8, .2, 1);
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px;
-  background: linear-gradient(180deg, transparent 45%, rgba(0, 0, 0, .7));
-  color: #fff;
+  padding: 8px;
+  color: var(--text-primary);
   opacity: 0;
-  transition: opacity .2s;
+  transition: opacity var(--dur) $ease;
 }
 .nr-player--mini:not(.is-ready) .nr-mini-ui { opacity: 1; }
 .nr-mini-info {
@@ -265,8 +339,14 @@ $ease: cubic-bezier(.2, .8, .2, 1);
   align-items: center;
   gap: 8px;
   min-width: 0;
-  font-size: 13px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(9, 9, 11, .82);
+  border: 1px solid var(--border-hover);
+  font-size: 12.5px;
   font-weight: 600;
+  letter-spacing: -0.02em;
 }
 .nr-mini-actions {
   display: flex;
@@ -275,15 +355,14 @@ $ease: cubic-bezier(.2, .8, .2, 1);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: rgba(10, 10, 12, .6);
-    backdrop-filter: blur(8px);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
-    transition: background-color .18s;
-    .v-icon { color: #fff !important; }
-    &:hover { background: rgba(255, 255, 255, .18); }
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: rgba(9, 9, 11, .82);
+    border: 1px solid var(--border-hover);
+    transition: background-color var(--dur) $ease;
+    .v-icon { color: var(--text-primary) !important; }
+    &:hover { background: var(--bg-surface-3); }
   }
 }
 </style>
@@ -332,6 +411,9 @@ export default class RoomPlayer extends Vue {
   settled = false
   copied = false
   barWidth = 0
+  // joining: 0 the page is loading, 1 neko is connecting, 2 the video starts
+  phase = 0
+  now = Date.now()
 
   private poller = 0
   private roomTimer = 0
@@ -364,15 +446,29 @@ export default class RoomPlayer extends Vue {
     return this.room ? this.room.title : this.state.name
   }
 
+  get steps(): string[] {
+    return ['Opening room', 'Connecting', 'Starting video']
+  }
+
+  // how long this visit has been going, a quiet clock in the bar
+  get elapsed(): string {
+    if (!this.startedAt || !this.ready) return ''
+    const t = Math.max(0, Math.floor((this.now - this.startedAt) / 1000))
+    const h = Math.floor(t / 3600)
+    const m = Math.floor((t % 3600) / 60)
+    const pad = (n: number) => (n < 10 ? '0' : '') + n
+    return (h ? h + ':' + pad(m) : String(m)) + ':' + pad(t % 60)
+  }
+
   get members(): string[] {
     return this.room ? this.room.members.slice(0, 4) : []
   }
 
   get curtainStyle() {
-    const tint = 'radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--nr-primary) 22%, transparent), transparent 60%), linear-gradient(135deg, var(--nr-surface), var(--nr-bg))'
     const image = this.state.image.replace(/"/g, '')
-    return { backgroundImage: image ? `url("${image}"), ${tint}` : tint }
+    return image ? { backgroundImage: `url("${image}")` } : {}
   }
+
 
   get barStyle() {
     return this.barWidth > 0 ? { maxWidth: this.barWidth + 'px' } : {}
@@ -399,6 +495,7 @@ export default class RoomPlayer extends Vue {
     this.ready = false
     this.settled = false
     this.barWidth = 0
+    this.phase = 0
     if (!this.active) return
 
     this.startedAt = Date.now()
@@ -479,6 +576,7 @@ export default class RoomPlayer extends Vue {
       if (!this.ready) {
         const video = doc.querySelector('video')
         const lobby = !doc.getElementById('neko') && doc.querySelector('.swal2-popup')
+        if (doc.getElementById('neko')) this.phase = video ? 2 : 1
         if (lobby || (video && video.readyState >= 2)) this.reveal()
       }
 
@@ -491,6 +589,8 @@ export default class RoomPlayer extends Vue {
     }
 
     if (!this.ready && Date.now() - this.startedAt > READY_TIMEOUT) this.reveal()
+    // once a second is enough for the clock
+    if (this.ready && Date.now() - this.now >= 1000) this.now = Date.now()
   }
 
   reveal() {

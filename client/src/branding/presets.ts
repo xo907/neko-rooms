@@ -31,6 +31,22 @@ const light = (primary: string, accent: string): Palette => ({
 
 export const presets: ThemePreset[] = [
   {
+    name: 'Cinema',
+    mode: 'dark',
+    dark: {
+      primary: '#ededef', secondary: '#18181c', accent: '#ededef', error: '#ef4444', info: '#a1a1aa', success: '#10b981', warning: '#f59e0b',
+      background: '#09090b', surface: '#111114', text: '#f4f4f6', app_bar: '#09090b', app_bar_text: '#f4f4f6', footer: '#09090b', footer_text: '#85858e', drawer: '#111114',
+    },
+    light: {
+      ...light('#18181b', '#18181b'),
+      secondary: '#f4f4f5', success: '#059669', warning: '#d97706', background: '#fafafa', surface: '#ffffff', text: '#09090b', app_bar: '#fafafa', app_bar_text: '#09090b', footer: '#fafafa', footer_text: '#6b6b74',
+    },
+    font_family: "Geist, Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    font_url: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap',
+    border_radius: 10,
+    button_uppercase: false,
+  },
+  {
     name: 'XO Minimal',
     mode: 'dark',
     dark: {
@@ -42,7 +58,7 @@ export const presets: ThemePreset[] = [
       secondary: '#f4f4f5', background: '#fafafa', text: '#09090b', app_bar: '#fafafa', app_bar_text: '#09090b', footer: '#fafafa', footer_text: '#71717a',
     },
     font_family: 'Geist, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif',
-    font_url: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap',
+    font_url: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap',
     border_radius: 14,
     button_uppercase: false,
   },
