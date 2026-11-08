@@ -25,3 +25,8 @@ enable-animations=false
 [org.gnome.shell]
 favorite-apps=['firefox-esr.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']
 welcome-dialog-last-shown-version='999'
+
+# fractional scaling draws to a framebuffer of its own size, which goes out
+# of step with the screen when neko changes the resolution
+[org.gnome.mutter]
+experimental-features=[]
