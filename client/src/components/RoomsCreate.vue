@@ -158,6 +158,13 @@
             <div><span>Implicit control</span><small>Anyone can use the browser without asking for control first</small></div>
             <v-switch v-model="data.implicit_control" inset hide-details aria-label="Implicit control" />
           </div>
+          <div v-if="storageEnabled && browserPolicyConfig" class="nr-toggle">
+            <div>
+              <span>Ad blocking &amp; browser policy</span>
+              <small>{{ policyLine }} · <a href="#" @click.prevent="open.policy = true">customize</a></small>
+            </div>
+            <v-switch v-model="browserPolicyEnabled" inset hide-details aria-label="Ad blocking and browser policy" />
+          </div>
         </div>
 
         <!-- advanced container specs, closed by default -->
@@ -325,6 +332,37 @@
                 <v-switch v-model="browserPolicyContent.persistent_data" inset hide-details :disabled="!browserPolicyEnabled" aria-label="Persistent data" />
               </div>
             </template>
+          </div>
+
+          <button type="button" class="nr-adv-row" :aria-expanded="open.neko" @click="open.neko = !open.neko">
+            <v-icon small>{{ open.neko ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>Neko options
+            <span class="nr-mono">{{ nekoOnCount ? nekoOnCount + ' on' : 'defaults' }}</span>
+          </button>
+          <div v-if="open.neko" class="nr-adv-body">
+            <v-text-field v-model="nekoSearch" outlined dense hide-details clearable prepend-inner-icon="mdi-magnify" :placeholder="'Search ' + nekoOptions.length + ' options'" aria-label="Search neko options" />
+            <p class="nr-note">Every option of neko 3. Switch one on to set it for this room; variables under Environment win over these.</p>
+            <div v-for="g in nekoGroups" :key="g.name" class="nr-opt-group">
+              <span class="nr-label">{{ g.name }}</span>
+              <div v-for="o in g.options" :key="o.env" class="nr-opt" :class="{ 'is-on': opt(o).on, 'is-managed': o.managed }">
+                <div class="nr-opt-head">
+                  <div class="nr-opt-text">
+                    <span class="nr-mono nr-opt-env">{{ o.env }}</span>
+                    <small>{{ o.description }}</small>
+                  </div>
+                  <span v-if="o.managed" class="nr-tag" title="neko-rooms sets this for every room">set by neko-rooms</span>
+                  <v-switch v-else :input-value="opt(o).on" inset hide-details :aria-label="o.env" @change="setOpt(o, { on: !!$event })" />
+                </div>
+                <div v-if="opt(o).on" class="nr-opt-value">
+                  <div v-if="o.type === 'boolean'" class="nr-seg is-field" role="group" :aria-label="o.env">
+                    <button type="button" :class="{ 'is-on': opt(o).value === 'true' }" @click="setOpt(o, { value: 'true' })">true</button>
+                    <button type="button" :class="{ 'is-on': opt(o).value === 'false' }" @click="setOpt(o, { value: 'false' })">false</button>
+                  </div>
+                  <v-text-field v-else :value="opt(o).value" outlined dense hide-details class="nr-input-mono" :placeholder="o.default || o.type" :aria-label="o.env" @input="setOpt(o, { value: $event || '' })" />
+                  <span class="nr-mono nr-opt-default">{{ o.type }} · default {{ o.default || 'none' }}</span>
+                </div>
+              </div>
+            </div>
+            <p v-if="!nekoGroups.length" class="nr-note">No option matches.</p>
           </div>
         </section>
       </v-form>
@@ -506,6 +544,35 @@
 .nr-mount { grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1fr) 30px; }
 .nr-add { align-self: flex-start; }
 .nr-pipe { display: flex; flex-direction: column; gap: 8px; .v-input--switch { margin: 0; } }
+.nr-opt-group { display: flex; flex-direction: column; gap: 8px; }
+.nr-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+  &.is-on { border-color: var(--border-hover); background: var(--bg-surface-2); }
+  &.is-managed { opacity: .55; }
+}
+.nr-opt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  .v-input { flex: none; margin: 0; padding: 0; }
+}
+.nr-opt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  small { font-size: 12px; line-height: 1.45; color: var(--text-tertiary); }
+}
+.nr-opt-env { font-size: 11.5px; color: var(--text-primary); word-break: break-all; }
+.nr-opt-value { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; > .v-input { flex: 1; min-width: 160px; } }
+.nr-opt-default { font-size: 11px; color: var(--text-tertiary); }
 .nr-note {
   margin: 0;
   font-size: 12.5px;
@@ -539,6 +606,12 @@ import { Vue, Component, Ref, Watch } from 'vue-property-decorator'
 import { AxiosError } from 'axios'
 import { randomPassword } from '@/utils/random'
 import { copyText } from '@/utils/join'
+import { NEKO_OPTIONS, NekoOption } from '@/utils/nekoEnv'
+
+interface OptState {
+  on: boolean
+  value: string
+}
 
 import {
   RoomSettings,
@@ -623,7 +696,75 @@ export default class RoomsCreate extends Vue {
   }
 
   // which advanced sections are open
-  public open = { av: false, res: false, env: false, mounts: false, net: false, pipes: false, policy: false }
+  public open = { av: false, res: false, env: false, mounts: false, net: false, pipes: false, policy: false, neko: false }
+
+  // neko options switched on for this room, by environment variable
+  public nekoOpts: Record<string, OptState> = {}
+  public nekoSearch = ''
+
+  get nekoOptions(): NekoOption[] {
+    return NEKO_OPTIONS
+  }
+
+  get nekoGroups(): { name: string; options: NekoOption[] }[] {
+    const q = (this.nekoSearch || '').trim().toLowerCase()
+    const groups: { name: string; options: NekoOption[] }[] = []
+    NEKO_OPTIONS
+      .filter(o => !q || o.env.toLowerCase().includes(q) || o.description.toLowerCase().includes(q))
+      .forEach(o => {
+        let g = groups.find(x => x.name === o.group)
+        if (!g) groups.push(g = { name: o.group, options: [] })
+        g.options.push(o)
+      })
+    return groups
+  }
+
+  get nekoOnCount(): number {
+    return Object.values(this.nekoOpts).filter(v => v.on).length
+  }
+
+  opt(o: NekoOption): OptState {
+    return this.nekoOpts[o.env] || { on: false, value: '' }
+  }
+
+  // switching an option on starts from a useful value: the opposite of the
+  // default for a switch, the default for anything else
+  setOpt(o: NekoOption, patch: Partial<OptState>) {
+    const cur = this.opt(o)
+    const next = { ...cur, ...patch }
+    if (patch.on && !cur.on && next.value === '') {
+      next.value = o.type === 'boolean' ? (o.default === 'true' ? 'false' : 'true') : o.default
+    }
+    Vue.set(this.nekoOpts, o.env, next)
+  }
+
+  // the extensions a room gets without anyone picking them: ad blocking
+  get recommendedExtensions() {
+    return this.browserPolicyExtensions
+      .filter((e: { text: string } | undefined) => e && e.text.toLowerCase().includes('ublock'))
+      .map((e: { value: BrowserPolicyExtension }) => e.value)
+  }
+
+  get policyLine(): string {
+    if (!this.browserPolicyEnabled) return 'Off'
+    const picked = this.browserPolicyContent.extensions || []
+    const names = this.browserPolicyExtensions
+      .filter((e: { text: string; value: BrowserPolicyExtension } | undefined) => e && picked.some(p => JSON.stringify(p) === JSON.stringify(e.value)))
+      .map((e: { text: string }) => e.text)
+    return names.length ? names.join(', ') : 'On, no extensions'
+  }
+
+  // a browser policy is on by default, with ad blocking, wherever the image
+  // and the server support one
+  @Watch('data.neko_image')
+  applyPolicyDefaults() {
+    if (!this.storageEnabled || !this.browserPolicyConfig) {
+      this.browserPolicyEnabled = false
+      return
+    }
+    this.browserPolicyEnabled = true
+    this.browserPolicyContent = { ...this.browserPolicyContent, extensions: this.recommendedExtensions }
+  }
   public copied = ''
   private copiedTimer = 0
 
@@ -877,7 +1018,11 @@ export default class RoomsCreate extends Vue {
     this.loading = true
 
     try {
-      const envs = this.envList.reduce((obj, { key, val }) => ({ ...obj, [key]: val, }), {})
+      // neko options first, the custom variables win over them
+      const options = Object.entries(this.nekoOpts)
+        .filter(([, v]) => v.on && v.value !== '')
+        .reduce((obj, [key, v]) => ({ ...obj, [key]: v.value }), {} as Record<string, string>)
+      const envs = this.envList.reduce((obj, { key, val }) => ({ ...obj, [key]: val, }), options)
 
       await this.$store.dispatch(start ? 'ROOMS_CREATE_AND_START' : 'ROOMS_CREATE', {
         ...this.data,
@@ -945,6 +1090,9 @@ export default class RoomsCreate extends Vue {
     }
     this.browserPolicyContent = { ...this.$store.state.defaultBrowserPolicyContent }
     this.envList = Object.entries({...this.data.envs}).map(([ key, val ]) => ({ key, val, }))
+    this.nekoOpts = {}
+    this.nekoSearch = ''
+    this.applyPolicyDefaults()
   }
 
   Close() {
